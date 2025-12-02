@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import requests
 import io
+import csv
 from datetime import datetime, time
 
 # --- Configuration ---
@@ -41,11 +42,7 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .score-number {font-size:32px;font-weight:700;color:var(--valid);}
 
 .criteria-container {margin:20px 0;}
-.criterion {
-    display:flex;justify-content:space-between;align-items:center;
-    padding:12px;background:var(--dark-card);border-radius:6px;
-    border:1px solid var(--border);margin-bottom:8px;
-}
+.criterion {display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--dark-card);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;}
 .criterion.valid {border-left:4px solid var(--valid);}
 .criterion.invalid {border-left:4px solid var(--invalid);}
 .status-container {display:flex;flex-direction:column;align-items:flex-end;}
@@ -207,46 +204,24 @@ def get_nasdaq_tickers():
     except:
         return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
 
-# --- Génération Excel avec valeurs ---
-def generate_excel(analysis):
-    data = []
+# --- Génération CSV (remplace Excel) ---
+def generate_csv(analysis):
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Écriture de l'en-tête
+    writer.writerow(["Critère", "Statut", "Seuil", "Valeur"])
+
+    # Écriture des données
     for criterion, result in analysis['results'].items():
-        data.append([
+        writer.writerow([
             criterion,
             "✅ Valide" if result["valid"] else "❌ Invalide",
             result["threshold"],
             result["value"]
         ])
 
-    df = pd.DataFrame(data, columns=["Critère", "Statut", "Seuil", "Valeur"])
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Analyse')
-        worksheet = writer.sheets['Analyse']
-
-        # Mise en forme
-        format_header = writer.book.add_format({
-            'bold': True,
-            'text_align': 'center',
-            'fg_color': '#4f81bd',
-            'font_color': 'white'
-        })
-
-        format_valid = writer.book.add_format({'bg_color': '#d5e8d4'})
-        format_invalid = writer.book.add_format({'bg_color': '#f8cbad'})
-
-        worksheet.set_column('A:D', 20)
-        worksheet.write('A1:D1', df.columns, format_header)
-
-        for i, (_, row) in enumerate(df.iterrows(), start=1):
-            if row["Statut"] == "✅ Valide":
-                worksheet.set_row(i, None, format_valid)
-            else:
-                worksheet.set_row(i, None, format_invalid)
-
-    output.seek(0)
-    return output
+    return output.getvalue().encode('utf-8')
 
 # --- Interface ---
 st.markdown("""
@@ -322,14 +297,14 @@ with tab_analyse:
                 </div>
                 """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-                # Bouton d'export Excel
+                # Bouton d'export CSV
                 st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
-                excel = generate_excel(analysis)
+                csv = generate_csv(analysis)
                 st.download_button(
-                    label="Exporter en Excel",
-                    data=excel,
-                    file_name=f"analyse_{analysis['ticker']}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    label="Exporter en CSV",
+                    data=csv,
+                    file_name=f"analyse_{analysis['ticker']}.csv",
+                    mime="text/csv"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
 
