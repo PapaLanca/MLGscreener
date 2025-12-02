@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # --- Constantes ---
-NEWS_API_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"  # Votre clé API NewsAPI
+NEWS_API_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"
 
 # --- CSS avec fond sombre ---
 st.markdown("""
@@ -78,6 +78,41 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 
 .institutional-holders {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
 .holder-item {display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+
+.footer {
+    margin-top: 50px;
+    padding: 20px;
+    text-align: center;
+    color: var(--text);
+    font-size: 14px;
+    border-top: 1px solid var(--border);
+}
+.footer-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--primary);
+}
+.company-info {
+    margin: 15px 0;
+    line-height: 1.5;
+}
+.company-info a {
+    color: var(--primary);
+    text-decoration: none;
+}
+.company-info a:hover {
+    text-decoration: underline;
+}
+.disclaimer {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 15px;
+    line-height: 1.4;
+    text-align: left;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -429,10 +464,28 @@ with tab_planification:
         st.success(f"✅ Analyse complète programmée pour {len(tickers)} entreprises NASDAQ "
                   f"toutes les {frequency.lower()} à partir du {start_date.strftime('%d/%m/%Y')} à 22h00")
 
-# --- Pied de page EXACTEMENT comme demandé ---
+# --- Pied de page professionnel avec toutes les informations ---
 st.markdown("""
 <div class="footer">
-    <p><strong>EURL MLG Courtage</strong> - Courtier en assurances</p>
-    <p>Outil développé selon la méthodologie décrite dans "Mon Screener.pdf"</p>
+    <div class="footer-title">MLG Screener - Outil d'analyse financière professionnel</div>
+
+    <div class="company-info">
+        <strong>Proposé gratuitement par EURL MLG Courtage</strong><br>
+        Courtier en assurances agréé ORIAS n°24002055<br>
+        SIRET : 98324762800016<br>
+        <a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a>
+    </div>
+
+    <div class="disclaimer">
+        <strong>Disclaimer :</strong><br>
+        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
+        Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
+    </div>
+
+    <div style="margin-top: 20px; font-size: 12px; color: #9ca3af;">
+        © 2023 EURL MLG Courtage - Tous droits réservés
+    </div>
 </div>
 """, unsafe_allow_html=True)
