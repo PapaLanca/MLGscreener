@@ -1,5 +1,6 @@
 import streamlit as st
 import yfinance as yf
+# import requests  # À décommenter si tu utilises Alpha Vantage
 
 # --- Configuration de la page ---
 st.set_page_config(
@@ -9,295 +10,120 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS complet pour un design clair et professionnel ---
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+# --- CSS complet ---
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+:root {--primary-color: #1e3a8a;--secondary-color: #3b82f6;--text-color: #1f2937;}
+body,[data-testid="stAppViewContainer"] {background-color: white !important;color: var(--text-color) !important;font-family: 'Montserrat', sans-serif !important;}
+.stTextInput>div, .stTextArea>div, .stSelectbox>div {background-color: white !important;}
+.stTextInput>div>div>input, .stTextArea>div>textarea {background-color: white !important;color: var(--text-color) !important;border: 1px solid #e5e7eb !important;border-radius: 4px !important;}
+.stButton>button {background-color: var(--primary-color) !important;color: white !important;border-radius: 4px !important;border: none !important;}
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {color: var(--primary-color) !important;}
+.banner {background-color: white;padding: 20px;display: flex;align-items: center;justify-content: space-between;border-bottom: 1px solid #e5e7eb;margin-bottom: 30px;}
+.banner-text {flex: 1;text-align: center;color: var(--primary-color);font-size: 20px;font-weight: 600;}
+.nav-buttons {display: flex;gap: 20px;justify-content: center;margin-bottom: 30px;}
+.nav-button {background-color: var(--primary-color);color: white !important;padding: 12px 24px;border: none;border-radius: 6px;font-weight: 600;text-decoration: none;display: inline-block;}
+.content-section {background-color: white;padding: 30px;border-radius: 8px;box-shadow: 0 2px 4px rgba(0,0,0,0.05);margin-bottom: 30px;}
+.footer {background-color: white;padding: 20px;text-align: center;border-top: 1px solid #e5e7eb;color: var(--text-color);font-size: 14px;margin-top: 40px;}
+.footer a {color: var(--primary-color);text-decoration: none;}
+.section-title {color: var(--primary-color);border-bottom: 1px solid #e5e7eb;padding-bottom: 10px;margin-bottom: 20px;}
+.metric-card {background-color: #f8fafc;padding: 15px;border-radius: 8px;margin-bottom: 15px;border-left: 4px solid var(--primary-color);}
+</style>
+""", unsafe_allow_html=True)
 
-    :root {
-        --primary-color: #1e3a8a;
-        --secondary-color: #3b82f6;
-        --text-color: #1f2937;
-        --light-color: #ffffff;
-        --border-color: #e5e7eb;
-    }
-
-    /* Fond général */
-    body, [data-testid="stAppViewContainer"] {
-        background-color: var(--light-color) !important;
-        color: var(--text-color) !important;
-        font-family: 'Montserrat', sans-serif !important;
-    }
-
-    [data-testid="stHeader"] {
-        background-color: rgba(0, 0, 0, 0) !important;
-    }
-
-    /* Bandeau */
-    .banner {
-        background-color: var(--light-color);
-        padding: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 30px;
-    }
-
-    .logo-container {
-        display: flex;
-        align-items: center;
-        width: 200px;
-    }
-
-    .banner-text {
-        flex: 1;
-        text-align: center;
-        color: var(--primary-color);
-        font-size: 20px;
-        font-weight: 600;
-    }
-
-    /* Boutons de navigation */
-    .nav-buttons {
-        display: flex;
-        gap: 20px;
-        justify-content: center;
-        margin-bottom: 30px;
-    }
-
-    .nav-button {
-        background-color: var(--primary-color);
-        color: white !important;
-        padding: 12px 24px;
-        border: none;
-        border-radius: 6px;
-        font-weight: 600;
-        text-decoration: none;
-        display: inline-block;
-        transition: background-color 0.2s;
-    }
-
-    .nav-button:hover {
-        background-color: var(--secondary-color);
-    }
-
-    /* Sections de contenu */
-    .content-section {
-        background-color: var(--light-color);
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        margin-bottom: 30px;
-    }
-
-    /* Pied de page */
-    .footer {
-        background-color: var(--light-color);
-        padding: 20px;
-        text-align: center;
-        border-top: 1px solid var(--border-color);
-        color: var(--text-color);
-        font-size: 14px;
-        margin-top: 40px;
-    }
-
-    .footer a {
-        color: var(--primary-color);
-        text-decoration: none;
-    }
-
-    .footer a:hover {
-        text-decoration: underline;
-    }
-
-    /* Titres */
-    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        color: var(--primary-color) !important;
-    }
-
-    .stMarkdown, .stMarkdown p, .stMarkdown li {
-        color: var(--text-color) !important;
-    }
-
-    /* Champs de saisie */
-    .stTextInput>div {
-        background-color: white !important;
-    }
-
-    .stTextInput>div>div>input {
-        background-color: white !important;
-        color: var(--text-color) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: 4px !important;
-    }
-
-    .stTextInput>label {
-        color: var(--text-color) !important;
-    }
-
-    /* Zones de texte multi-lignes */
-    .stTextArea>div {
-        background-color: white !important;
-    }
-
-    .stTextArea>div>textarea {
-        background-color: white !important;
-        color: var(--text-color) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: 4px !important;
-    }
-
-    .stTextArea>label {
-        color: var(--text-color) !important;
-    }
-
-    /* Boutons Streamlit */
-    .stButton>button {
-        background-color: var(--primary-color) !important;
-        color: white !important;
-        border-radius: 4px !important;
-        border: none !important;
-    }
-
-    /* Sélecteurs */
-    .stSelectbox>div {
-        background-color: white !important;
-    }
-
-    .stSelectbox>div>div {
-        background-color: white !important;
-        color: var(--text-color) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: 4px !important;
-    }
-
-    /* Sections avec titre */
-    .section-title {
-        color: var(--primary-color);
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 10px;
-        margin-bottom: 20px;
-    }
-
-    /* Liens */
-    a:not(.nav-button) {
-        color: var(--primary-color) !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# --- Bandeau avec logo ---
+# --- Bandeau ---
 def display_banner():
-    logo_url = "https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp"
-
     col1, col2 = st.columns([1, 4])
     with col1:
         try:
-            st.image(logo_url, width=180)
+            st.image("https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp", width=180)
         except:
             st.error("Logo introuvable")
     with col2:
-        st.markdown(
-            """
-            <div class="banner-text">
-                MLG Courtage vous propose MLG Screener pour vous aider à trouver des opportunités et générer un revenu complémentaire
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='banner-text'>MLG Courtage - Outil d'analyse financière</div>", unsafe_allow_html=True)
 
-# --- Section Analyse d'entreprise ---
+# --- Analyse d'entreprise (version optimisée) ---
 def display_analyse_section():
-    st.markdown('<div class="content-section" id="analyse">', unsafe_allow_html=True)
-    st.markdown('<h2 class="section-title">Analyser une entreprise</h2>', unsafe_allow_html=True)
+    st.markdown('<div class="content-section">', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-title">Analyse fondamentale</h2>', unsafe_allow_html=True)
 
-    ticker = st.text_input("Entrez le ticker de l'entreprise (ex: AAPL, MSFT, TSLA)", "AAPL")
+    ticker = st.text_input("Entrez le ticker (ex: AAPL, GMED, MSFT)", "GMED").upper()
+
     if st.button("Analyser"):
         if ticker:
-            with st.spinner(f"Analyse de {ticker} en cours..."):
+            with st.spinner(f"Analyse de {ticker}..."):
                 try:
+                    # --- Données YFinance ---
                     stock = yf.Ticker(ticker)
                     info = stock.info
-                    hist = stock.history(period="1y")
 
-                    st.subheader(f"Informations sur {ticker} - {info.get('longName', ticker)}")
+                    # --- Affichage des données clés ---
+                    st.subheader(f"📊 {ticker} - {info.get('longName', 'N/A')}")
                     st.write(f"**Secteur:** {info.get('sector', 'N/A')} | **Industrie:** {info.get('industry', 'N/A')}")
-                    st.write(f"**Prix actuel:** {info.get('currentPrice', 'N/A')} {info.get('currency', '')}")
-                    st.write(f"**Capitalisation boursière:** {info.get('marketCap', 'N/A'):,}")
 
-                    st.markdown("---")
-                    st.subheader("Performance (1 an)")
-                    st.line_chart(hist['Close'])
-
-                    st.markdown("---")
-                    st.subheader("Indicateurs clés")
-                    col1, col2 = st.columns(2)
+                    # Métriques financières
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("P/E Ratio", info.get('trailingPE', 'N/A'))
-                        st.metric("Bénéfice par action", info.get('trailingEps', 'N/A'))
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <strong>Prix actuel:</strong> {info.get('currentPrice', 'N/A')} {info.get('currency', 'USD')}
+                            <br><strong>Capitalisation:</strong> {info.get('marketCap', 'N/A'):,}
+                            <br><strong>Volume moyen:</strong> {info.get('averageVolume', 'N/A'):,}
+                        </div>
+                        """, unsafe_allow_html=True)
+
                     with col2:
-                        st.metric("Dividende", info.get('dividendYield', 'N/A'))
-                        st.metric("Volume moyen", f"{info.get('averageVolume', 'N/A'):,}")
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <strong>P/E Ratio:</strong> {info.get('trailingPE', 'N/A')}
+                            <br><strong>Bénéfice/Action:</strong> {info.get('trailingEps', 'N/A')}
+                            <br><strong>Dividende:</strong> {info.get('dividendYield', 'N/A')}
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with col3:
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <strong>Beta (volatilité):</strong> {info.get('beta', 'N/A')}
+                            <br><strong>Marges:</strong> {info.get('profitMargins', 'N/A')}
+                            <br><strong>ROE:</strong> {info.get('returnOnEquity', 'N/A')}
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # --- Analyse technique basique ---
+                    st.markdown("<h3 class='section-title'>Indicateurs techniques</h3>", unsafe_allow_html=True)
+                    hist = stock.history(period="1d")
+                    if not hist.empty:
+                        current_price = hist['Close'].iloc[-1]
+                        st.write(f"**Dernier cours:** {current_price:.2f}")
+
+                    # --- Alpha Vantage (optionnel) ---
+                    # alpha_vantage_data = get_alpha_vantage_data(ticker)  # Fonction à implémenter
+                    # if alpha_vantage_data:
+                    #     st.json(alpha_vantage_data)  # Ou affichage personnalisé
 
                 except Exception as e:
-                    st.error(f"Erreur lors de l'analyse: {e}")
+                    st.error(f"Erreur: {str(e)}")
         else:
-            st.warning("Veuillez entrer un ticker valide")
+            st.warning("Veuillez entrer un ticker")
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# --- Section Planification ---
-def display_planification_section():
-    st.markdown('<div class="content-section" id="planification">', unsafe_allow_html=True)
-    st.markdown('<h2 class="section-title">Planifier une analyse</h2>', unsafe_allow_html=True)
-
-    frequency = st.selectbox(
-        "Fréquence d'analyse",
-        ["Toutes les semaines", "Toutes les 2 semaines", "Toutes les 4 semaines", "Tous les mois"]
-    )
-
-    tickers = st.text_area("Liste des tickers à analyser (un par ligne)", "AAPL\nMSFT\nTSLA")
-
-    if st.button("Programmer l'analyse"):
-        st.success(f"Analyse programmée pour: {frequency}. Tickers: {tickers.replace('\n', ', ')}")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Pied de page ---
 def display_footer():
-    st.markdown(
-        """
-        <div class="footer">
-            <p><strong>EURL MLG Courtage</strong> - votre courtier en assurances</p>
-            <p>SIRET : 98324762800016 | ORIAS : 24002055</p>
-            <p>12 La Garnaudière, 44310 La Limouzinière</p>
-            <p><a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a></p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# --- Navigation ---
-def display_navigation():
-    st.markdown(
-        """
-        <div class="nav-buttons">
-            <a class="nav-button" href="#analyse">Analyser une entreprise</a>
-            <a class="nav-button" href="#planification">Planifier une analyse</a>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <div class="footer">
+        <p><strong>EURL MLG Courtage</strong> - Courtier en assurances</p>
+        <p>SIRET: 98324762800016 | ORIAS: 24002055</p>
+        <p>12 La Garnaudière, 44310 La Limouzinière</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- Application principale ---
 def main():
     display_banner()
-    display_navigation()
     display_analyse_section()
-    display_planification_section()
     display_footer()
 
 if __name__ == "__main__":
