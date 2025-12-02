@@ -3,12 +3,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
+import io
 from datetime import datetime, time
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
 
 # --- Configuration ---
 st.set_page_config(
@@ -169,50 +165,7 @@ def get_nasdaq_tickers():
     except:
         return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
 
-# --- Génération PDF ---
-def generate_pdf(analysis):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    # Titre
-    elements.append(Paragraph(f"Rapport d'analyse - {analysis['ticker']} - {analysis['name']}", styles['Title']))
-    elements.append(Spacer(1, 12))
-
-    # Score
-    elements.append(Paragraph(f"Score: {analysis['valid_count']}/{analysis['total']}", styles['Heading2']))
-    elements.append(Spacer(1, 12))
-
-    # Détails
-    data = [["Critère", "Statut", "Seuil"]]
-    for criterion, (valid, threshold) in analysis['results'].items():
-        status = "✅ Valide" if valid else "❌ Invalide"
-        data.append([criterion, status, threshold])
-
-    t = Table(data)
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    elements.append(t)
-
-    # Lien GuruFocus
-    elements.append(Spacer(1, 24))
-    elements.append(Paragraph("Vérifiez les critères GuruFocus:", styles['Heading3']))
-    elements.append(Paragraph(f"<link color='blue'>{analysis['gf_url']}</link>", styles['Normal']))
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-# --- Génération Excel ---
+# --- Génération Excel simplifiée ---
 def generate_excel(analysis):
     df = pd.DataFrame({
         "Critère": [k for k in analysis['results'].keys()],
@@ -227,30 +180,13 @@ def generate_excel(analysis):
         ]
     })
 
-    output = BytesIO()
+    output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Analyse')
         worksheet = writer.sheets['Analyse']
 
-        # Mise en forme
-        format_header = writer.book.add_format({
-            'bold': True,
-            'text_align': 'center',
-            'fg_color': '#4f81bd',
-            'font_color': 'white'
-        })
-
-        format_valid = writer.book.add_format({'fg_color': '#d5e8d4'})
-        format_invalid = writer.book.add_format({'fg_color': '#f8cbad'})
-
+        # Mise en forme basique
         worksheet.set_column('A:D', 20)
-        worksheet.write('A1:D1', ["Critère", "Statut", "Seuil", "Valeur"], format_header)
-
-        for i, (_, row) in enumerate(df.iterrows(), start=1):
-            if row["Statut"] == "✅ Valide":
-                worksheet.set_row(i, None, format_valid)
-            else:
-                worksheet.set_row(i, None, format_invalid)
 
     output.seek(0)
     return output
@@ -329,17 +265,8 @@ with tab_analyse:
                 </div>
                 """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-                # Boutons d'export
+                # Bouton d'export Excel
                 st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
-
-                pdf = generate_pdf(analysis)
-                st.download_button(
-                    label="Exporter en PDF",
-                    data=pdf,
-                    file_name=f"analyse_{analysis['ticker']}.pdf",
-                    mime="application/pdf"
-                )
-
                 excel = generate_excel(analysis)
                 st.download_button(
                     label="Exporter en Excel",
