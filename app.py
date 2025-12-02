@@ -4,6 +4,11 @@ import pandas as pd
 import numpy as np
 import requests
 from datetime import datetime, time
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 # --- Configuration ---
 st.set_page_config(
@@ -13,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS avec fond sombre et design professionnel ---
+# --- CSS avec fond sombre ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
@@ -51,11 +56,14 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .gf-item {display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
 .gf-link {color:var(--primary);text-decoration:none;font-weight:600;}
 .gf-link:hover {text-decoration:underline;}
+.gf-button {background:var(--primary);color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin-top:10px;}
 
 .nav-buttons {display:flex;gap:20px;justify-content:center;margin:20px 0;}
 .nav-button {background:var(--primary);color:white;padding:12px 24px;border:none;border-radius:6px;font-weight:600;text-decoration:none;}
 
 .plan-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
+.export-buttons {display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+.export-button {background:var(--primary);color:white;padding:8px 16px;border:none;border-radius:4px;text-decoration:none;}
 .footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
 
 .stTextInput>div>div>input, .stTextArea>div>textarea, .stSelectbox>div>div>select {
@@ -157,9 +165,95 @@ def get_nasdaq_tickers():
         url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
         response = requests.get(url)
         tickers = [line.split('|')[0].strip() for line in response.text.split('\n') if line]
-        return tickers
+        return tickers[:100]  # Limité à 100 pour la démo
     except:
-        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]  # Liste par défaut
+        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
+
+# --- Génération PDF ---
+def generate_pdf(analysis):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Titre
+    elements.append(Paragraph(f"Rapport d'analyse - {analysis['ticker']} - {analysis['name']}", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    # Score
+    elements.append(Paragraph(f"Score: {analysis['valid_count']}/{analysis['total']}", styles['Heading2']))
+    elements.append(Spacer(1, 12))
+
+    # Détails
+    data = [["Critère", "Statut", "Seuil"]]
+    for criterion, (valid, threshold) in analysis['results'].items():
+        status = "✅ Valide" if valid else "❌ Invalide"
+        data.append([criterion, status, threshold])
+
+    t = Table(data)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(t)
+
+    # Lien GuruFocus
+    elements.append(Spacer(1, 24))
+    elements.append(Paragraph("Vérifiez les critères GuruFocus:", styles['Heading3']))
+    elements.append(Paragraph(f"<link color='blue'>{analysis['gf_url']}</link>", styles['Normal']))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+# --- Génération Excel ---
+def generate_excel(analysis):
+    df = pd.DataFrame({
+        "Critère": [k for k in analysis['results'].keys()],
+        "Statut": ["✅ Valide" if v[0] else "❌ Invalide" for v in analysis['results'].values()],
+        "Seuil": [v[1] for v in analysis['results'].values()],
+        "Valeur": [
+            f"{analysis['current_price']:.2f}" if k == "Prix actuel" else
+            f"{analysis['market_cap']:,.0f}" if k == "Capitalisation" else
+            f"{analysis['fcf_yield']:.2f}%" if k == "FCF Yield" else
+            f"{analysis['rsi']:.1f}" if k == "RSI" else
+            "N/A" for k in analysis['results'].keys()
+        ]
+    })
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Analyse')
+        worksheet = writer.sheets['Analyse']
+
+        # Mise en forme
+        format_header = writer.book.add_format({
+            'bold': True,
+            'text_align': 'center',
+            'fg_color': '#4f81bd',
+            'font_color': 'white'
+        })
+
+        format_valid = writer.book.add_format({'fg_color': '#d5e8d4'})
+        format_invalid = writer.book.add_format({'fg_color': '#f8cbad'})
+
+        worksheet.set_column('A:D', 20)
+        worksheet.write('A1:D1', ["Critère", "Statut", "Seuil", "Valeur"], format_header)
+
+        for i, (_, row) in enumerate(df.iterrows(), start=1):
+            if row["Statut"] == "✅ Valide":
+                worksheet.set_row(i, None, format_valid)
+            else:
+                worksheet.set_row(i, None, format_invalid)
+
+    output.seek(0)
+    return output
 
 # --- Interface ---
 st.markdown("""
@@ -216,7 +310,7 @@ with tab_analyse:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Critères GuruFocus sous le RSI
+                # Critères GuruFocus
                 st.markdown("""
                 <div class="gf-section">
                     <h3 style="color:var(--warning);margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
@@ -235,12 +329,25 @@ with tab_analyse:
                 </div>
                 """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-                if analysis['valid_count'] == analysis['total']:
-                    st.success("🎉 Cette action répond à TOUS les critères vérifiables automatiquement!")
-                elif analysis['valid_count'] >= analysis['total']*0.7:
-                    st.warning("⚠️ Cette action est intéressante - vérifiez les critères GuruFocus")
-                else:
-                    st.error("❌ Cette action ne répond pas à suffisamment de critères")
+                # Boutons d'export
+                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
+
+                pdf = generate_pdf(analysis)
+                st.download_button(
+                    label="Exporter en PDF",
+                    data=pdf,
+                    file_name=f"analyse_{analysis['ticker']}.pdf",
+                    mime="application/pdf"
+                )
+
+                excel = generate_excel(analysis)
+                st.download_button(
+                    label="Exporter en Excel",
+                    data=excel,
+                    file_name=f"analyse_{analysis['ticker']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_planification:
     st.markdown("<div class='plan-section'>", unsafe_allow_html=True)
@@ -252,17 +359,12 @@ with tab_planification:
     )
 
     start_date = st.date_input("Date de la première analyse", datetime.now())
-    start_time = st.time_input("Heure de la première analyse", time(22, 0))
-
     tickers = get_nasdaq_tickers()
-    st.info(f"{len(tickers)} entreprises NASDAQ seront analysées")
+    st.info(f"{len(tickers)} entreprises NASDAQ seront analysées à {start_date} 22h00")
 
     if st.button("Lancer l'analyse complète"):
         st.success(f"✅ Analyse complète programmée pour {len(tickers)} entreprises NASDAQ "
-                  f"toutes les {frequency.lower()} à partir du {start_date} à 22h00")
-        st.write("Liste des premières entreprises à analyser:")
-        st.write(tickers[:10])
-        st.write("...")
+                  f"toutes les {frequency.lower()} à partir du {start_date.strftime('%d/%m/%Y')} à 22h00")
 
 # --- Pied de page ---
 st.markdown("""
