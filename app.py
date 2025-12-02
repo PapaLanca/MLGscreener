@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
 # --- Configuration ---
 st.set_page_config(page_title="MLG Screener Pro", layout="wide")
@@ -21,8 +20,8 @@ body {font-family: 'Montserrat', sans-serif;}
 .criterion.valid {border-color:var(--valid);background:rgba(16, 185, 129, 0.1);}
 .criterion.invalid {border-color:var(--invalid);background:rgba(239, 68, 68, 0.1);}
 .metric {display:flex;justify-content:space-between;padding:8px 0;}
-.metric valid {color:var(--valid);}
-.metric invalid {color:var(--invalid);}
+.metric.valid {color:var(--valid);}
+.metric.invalid {color:var(--invalid);}
 .footer {margin-top:50px;padding:20px;text-align:center;color:#6b7280;font-size:14px;}
 </style>
 """, unsafe_allow_html=True)
@@ -66,7 +65,9 @@ def analyze_stock(ticker):
         inst_ownership = info.get('institutionalOwnership', 0)
         beta = info.get('beta', 1)
         eps_growth = info.get('earningsQuarterlyGrowth', 0)
-        fcf_per_share = info.get('freeCashflow', 0) / info.get('sharesOutstanding', 1)
+        fcf = info.get('freeCashflow', 0)
+        shares_outstanding = info.get('sharesOutstanding', 1)
+        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
         market_cap = info.get('marketCap', 0)
         rsi = get_rsi(hist['Close'].values)
 
@@ -75,6 +76,12 @@ def analyze_stock(ticker):
         fy2 = fy1 * 1.1
         fy3 = fy2 * 1.1
         gf_progression = fy1 < fy2 <= fy3
+
+        # Calcul du FCF Yield (corrigé)
+        fcf_yield_valid = False
+        if current_price and current_price > 0 and fcf_per_share > 0:
+            fcf_yield = (fcf_per_share / current_price) * 100
+            fcf_yield_valid = fcf_yield > 5
 
         # Vérification des critères
         results = {
@@ -87,12 +94,12 @@ def analyze_stock(ticker):
             "Beta": ("✅ Valide" if 0.5 < beta < 1.5 else "❌ Invalide", "0.5-1.5"),
             "Croissance BPA": ("✅ Valide" if eps_growth > 0 else "❌ Invalide", "> 0%"),
             "FCF/Action": ("✅ Valide" if fcf_per_share > 0 else "❌ Invalide", "> 0"),
-            "FCF Yield": ("✅ Valide" if (fcf_per_share/current_price)*100 > 5 if current_price else False else "❌ Invalide", "> 5%"),
+            "FCF Yield": ("✅ Valide" if fcf_yield_valid else "❌ Invalide", "> 5%"),
             "Progression GF Value": ("✅ Valide" if gf_progression else "❌ Invalide", "FY1<FY2≤FY3"),
             "RSI": ("✅ Valide" if 40 < rsi < 55 else "❌ Invalide", "40-55")
         }
 
-        valid_count = sum(1 for status in results.values() if status[0] == "✅ Valide")
+        valid_count = sum(1 for status, _ in results.values() if status == "✅ Valide")
         return {
             "ticker": ticker,
             "name": info.get('longName', ticker),
@@ -100,7 +107,8 @@ def analyze_stock(ticker):
             "valid_count": valid_count,
             "total": len(results),
             "current_price": current_price,
-            "market_cap": market_cap
+            "market_cap": market_cap,
+            "fcf_yield": fcf_yield if fcf_yield_valid else 0
         }
     except Exception as e:
         return {"error": str(e)}
@@ -111,7 +119,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#6b7280">Outil d'analyse fondamentale selon vos critères stricts</div>
+        <div style="color:#6b7280">Analyse fondamentale selon vos 12 critères stricts</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -127,7 +135,7 @@ if st.button("Analyser"):
             st.error(f"Erreur: {analysis['error']}")
         else:
             st.markdown(f"### {analysis['ticker']} - {analysis['name']}")
-            st.markdown(f"**Prix actuel:** {analysis['current_price']:.2f} | **Capitalisation:** {analysis['market_cap']:,.0f}")
+            st.markdown(f"**Prix actuel:** {analysis['current_price']:.2f} | **Capitalisation:** {analysis['market_cap']:,.0f} | **FCF Yield:** {analysis['fcf_yield']:.2f}%")
 
             st.markdown("#### Résultats du screening:")
             st.progress(analysis['valid_count']/analysis['total'])
