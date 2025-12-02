@@ -2,12 +2,11 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
 # --- Configuration ---
 st.set_page_config(page_title="MLG Screener Pro", layout="wide")
 
-# --- CSS mis à jour ---
+# --- CSS complet ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
@@ -17,26 +16,43 @@ st.markdown("""
     --valid: #10b981;
     --invalid: #ef4444;
     --warning: #f59e0b;
+    --light-gray: #f8f9fa;
 }
 body {font-family: 'Montserrat', sans-serif;}
 .banner {display:flex;align-items:center;gap:20px;margin-bottom:30px;}
 .banner img {width:180px;}
 .title {color:var(--primary);font-size:24px;font-weight:600;}
-.criteria {display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:20px 0;}
-.criterion {border-left:4px solid;padding:10px;border-radius:5px;}
-.criterion.valid {border-color:var(--valid);background:rgba(16, 185, 129, 0.1);}
-.criterion.invalid {border-color:var(--invalid);background:rgba(239, 68, 68, 0.1);}
-.metric {display:flex;justify-content:space-between;padding:8px 0;}
-.metric.valid {color:var(--valid);}
-.metric.invalid {color:var(--invalid);}
-.footer {margin-top:50px;padding:20px;text-align:center;color:#6b7280;font-size:14px;}
+.score-card {
+    background:var(--light-gray);padding:20px;border-radius:8px;
+    margin-bottom:20px;text-align:center;font-size:18px;font-weight:600;
+}
+.score-number {font-size:32px;font-weight:700;color:var(--primary);}
+.criteria-grid {display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;}
+.criterion {
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px;background:white;border-radius:6px;
+    border:1px solid #e5e7eb;
+}
+.criterion.valid {border-left:4px solid var(--valid);}
+.criterion.invalid {border-left:4px solid var(--invalid);}
+.status {font-weight:600;}
+.status.valid {color:var(--valid);}
+.status.invalid {color:var(--invalid);}
+.gf-section {
+    background:var(--light-gray);padding:20px;border-radius:8px;
+    margin-top:30px;
+}
+.gf-item {
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0;border-bottom:1px solid #e5e7eb;
+}
 .gf-link {color:var(--primary);text-decoration:none;font-weight:600;}
-.gf-button {background-color:var(--primary);color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin-top:20px;}
-.gf-section {background-color:#f8fafc;padding:20px;border-radius:8px;margin-top:30px;}
+.gf-link:hover {text-decoration:underline;}
+.footer {margin-top:50px;padding:20px;text-align:center;color:#6b7280;font-size:14px;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- Fonction RSI corrigée ---
+# --- Fonction RSI ---
 def calculate_rsi(prices, period=14):
     deltas = np.diff(prices)
     seed = deltas[:period+1]
@@ -62,11 +78,7 @@ def analyze_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-
-        # Récupération des données historiques QUOTIDIENNES
         hist = stock.history(period="3mo", interval="1d")
-        if len(hist) < 14:
-            hist = stock.history(period="1y", interval="1d")
 
         # Calcul des métriques
         current_price = info.get('currentPrice')
@@ -76,37 +88,32 @@ def analyze_stock(ticker):
         inst_ownership = info.get('institutionalOwnership', 0)
         beta = info.get('beta', 1)
         eps_growth = info.get('earningsQuarterlyGrowth', 0)
-
-        # Calcul FCF
         fcf = info.get('freeCashflow', 0)
         shares_outstanding = info.get('sharesOutstanding', 1)
         fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
 
-        # Calcul RSI (corrigé)
-        if not hist.empty and 'Close' in hist:
-            rsi = calculate_rsi(hist['Close'].values)
-        else:
-            rsi = 50  # Valeur par défaut si pas assez de données
+        # Calcul RSI
+        rsi = calculate_rsi(hist['Close'].values) if not hist.empty and 'Close' in hist else 50
 
         # Calcul FCF Yield
         fcf_yield = 0
         if current_price and current_price > 0 and fcf_per_share > 0:
             fcf_yield = (fcf_per_share / current_price) * 100
 
-        # Vérification des critères (sans GF Score/Valuation)
+        # Vérification des critères
         results = {
-            "Volume quotidien": ("✅ Valide" if avg_volume >= 100000 else "❌ Invalide", "≥ 100k"),
-            "ROE": ("✅ Valide" if roe >= 10 else "❌ Invalide", "≥ 10%"),
-            "Debt-to-Equity": ("✅ Valide" if 0 <= debt_to_equity <= 0.8 else "❌ Invalide", "0-0.8"),
-            "Ownership institutionnel": ("✅ Valide" if inst_ownership > 0 else "❌ Invalide", "> 0%"),
-            "Beta": ("✅ Valide" if 0.5 < beta < 1.5 else "❌ Invalide", "0.5-1.5"),
-            "Croissance BPA": ("✅ Valide" if eps_growth > 0 else "❌ Invalide", "> 0%"),
-            "FCF/Action": ("✅ Valide" if fcf_per_share > 0 else "❌ Invalide", "> 0"),
-            "FCF Yield": ("✅ Valide" if fcf_yield > 5 else "❌ Invalide", "> 5%"),
-            "RSI": ("✅ Valide" if 40 < rsi < 55 else "❌ Invalide", f"{rsi:.1f} (40-55)")
+            "Volume quotidien": (avg_volume >= 100000, "≥ 100k"),
+            "ROE": (roe >= 10, "≥ 10%"),
+            "Debt-to-Equity": (0 <= debt_to_equity <= 0.8, "0-0.8"),
+            "Ownership institutionnel": (inst_ownership > 0, "> 0%"),
+            "Beta": (0.5 < beta < 1.5, "0.5-1.5"),
+            "Croissance BPA": (eps_growth > 0, "> 0%"),
+            "FCF/Action": (fcf_per_share > 0, "> 0"),
+            "FCF Yield": (fcf_yield > 5, "> 5%"),
+            "RSI": (40 < rsi < 55, f"{rsi:.1f} (40-55)")
         }
 
-        valid_count = sum(1 for status, _ in results.items() if status == "✅ Valide")
+        valid_count = sum(1 for valid, _ in results.values() if valid)
 
         return {
             "ticker": ticker,
@@ -121,7 +128,7 @@ def analyze_stock(ticker):
             "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary"
         }
     except Exception as e:
-        return {"error": f"Erreur d'analyse: {str(e)}"}
+        return {"error": f"Erreur: {str(e)}"}
 
 # --- Interface ---
 st.markdown("""
@@ -144,48 +151,58 @@ if st.button("Analyser"):
         if "error" in analysis:
             st.error(analysis["error"])
         else:
-            st.markdown(f"### {analysis['ticker']} - {analysis['name']}")
+            # Score global en haut
             st.markdown(f"""
+            <div class="score-card">
+                Score global: <span class="score-number">{analysis['valid_count']}/{analysis['total']}</span>
+                <div style="font-size:14px;color:#6b7280">critères vérifiés</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            ### {analysis['ticker']} - {analysis['name']}
             **Prix actuel:** {analysis['current_price']:.2f} |
             **Capitalisation:** {analysis['market_cap']:,.0f} |
             **FCF Yield:** {analysis['fcf_yield']:.2f}% |
             **RSI (14j):** {analysis['rsi']:.1f}
             """)
 
-            st.markdown("#### Résultats du screening:")
-            st.progress(analysis['valid_count']/analysis['total'])
-
-            for criterion, (status, threshold) in analysis['results'].items():
-                css_class = 'valid' if status == "✅ Valide" else 'invalid'
+            # Liste des critères
+            st.markdown("<div class='criteria-grid'>", unsafe_allow_html=True)
+            for criterion, (valid, threshold) in analysis['results'].items():
+                status = "✅ Valide" if valid else "❌ Invalide"
+                css_class = "valid" if valid else "invalid"
                 st.markdown(f"""
                 <div class="criterion {css_class}">
-                    <div class="metric {css_class}">
-                        <span>{criterion}</span>
-                        <span>{status} {threshold}</span>
+                    <span>{criterion}</span>
+                    <div>
+                        <span class="status {css_class}">{status}</span>
+                        <span style="color:#6b7280;font-size:12px;margin-left:10px">{threshold}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # Section GuruFocus en bas
-            st.markdown(f"""
+            st.markdown("""
             <div class="gf-section">
-                <h3 style="color:var(--primary);margin-top:0;">Vérification des critères GuruFocus</h3>
-                <p>Les critères suivants nécessitent une vérification manuelle sur GuruFocus:</p>
-                <ul>
-                    <li>GF Valuation (Significatively/Modestly undervalued)</li>
-                    <li>GF Score (≥ 70)</li>
-                    <li>Progression GF Value (FY1 < FY2 ≤ FY3)</li>
-                </ul>
-                <a href="{analysis['gf_url']}" class="gf-button" target="_blank">Vérifier sur GuruFocus →</a>
+                <h3 style="color:var(--warning);margin-top:0;">⚠️ Critères à vérifier sur GuruFocus</h3>
+                <div class="gf-item">
+                    <span>GF Valuation (Significatively/Modestly undervalued)</span>
+                    <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                </div>
+                <div class="gf-item">
+                    <span>GF Score (≥ 70)</span>
+                    <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                </div>
+                <div class="gf-item">
+                    <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
+                    <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
+            """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div style="margin-top:20px;font-weight:600;color:{'var(--valid)' if analysis['valid_count'] == analysis['total'] else 'var(--invalid)'}">
-                Résultat final: {analysis['valid_count']}/{analysis['total']} critères vérifiables validés
-            </div>
-            """, unsafe_allow_html=True)
-
+            # Message final
             if analysis['valid_count'] == analysis['total']:
                 st.success("🎉 Cette action répond à TOUS les critères vérifiables automatiquement!")
             elif analysis['valid_count'] >= analysis['total']*0.7:
