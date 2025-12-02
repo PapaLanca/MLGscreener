@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
+from datetime import datetime, time
 
 # --- Configuration ---
 st.set_page_config(
@@ -11,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS avec fond sombre ---
+# --- CSS avec fond sombre et design professionnel ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
@@ -34,50 +36,29 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .banner img {width:180px;}
 .title {color:var(--primary);font-size:24px;font-weight:600;}
 
-.score-card {
-    background:var(--dark-card);padding:20px;border-radius:8px;
-    margin-bottom:20px;text-align:center;font-size:18px;font-weight:600;
-}
+.score-card {background:var(--dark-card);padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;}
 .score-number {font-size:32px;font-weight:700;color:var(--valid);}
 
-.criteria-grid {display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;}
-.criterion {
-    display:flex;justify-content:space-between;align-items:center;
-    padding:12px;background:var(--dark-card);border-radius:6px;
-    border:1px solid var(--border);
-}
+.criteria-container {margin:20px 0;}
+.criterion {display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--dark-card);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;}
 .criterion.valid {border-left:4px solid var(--valid);}
 .criterion.invalid {border-left:4px solid var(--invalid);}
 .status {font-weight:600;}
 .status.valid {color:var(--valid);}
 .status.invalid {color:var(--invalid);}
 
-.gf-section {
-    background:var(--dark-card);padding:20px;border-radius:8px;
-    margin-top:30px;
-}
-.gf-item {
-    display:flex;justify-content:space-between;align-items:center;
-    padding:10px 0;border-bottom:1px solid var(--border);
-}
+.gf-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
+.gf-item {display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
 .gf-link {color:var(--primary);text-decoration:none;font-weight:600;}
 .gf-link:hover {text-decoration:underline;}
-.gf-button {
-    background:var(--primary);color:white;padding:10px 20px;
-    border:none;border-radius:5px;text-decoration:none;
-    display:inline-block;margin-top:10px;
-}
 
 .nav-buttons {display:flex;gap:20px;justify-content:center;margin:20px 0;}
-.nav-button {
-    background:var(--primary);color:white;padding:12px 24px;
-    border:none;border-radius:6px;font-weight:600;
-    text-decoration:none;display:inline-block;
-}
+.nav-button {background:var(--primary);color:white;padding:12px 24px;border:none;border-radius:6px;font-weight:600;text-decoration:none;}
 
+.plan-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
 .footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
 
-.stTextInput>div>div>input, .stTextArea>div>textarea {
+.stTextInput>div>div>input, .stTextArea>div>textarea, .stSelectbox>div>div>select {
     background-color: var(--dark-card) !important;
     color: var(--text) !important;
     border: 1px solid var(--border) !important;
@@ -169,6 +150,17 @@ def analyze_stock(ticker):
     except Exception as e:
         return {"error": f"Erreur: {str(e)}"}
 
+# --- Récupération des tickers NASDAQ ---
+@st.cache_data
+def get_nasdaq_tickers():
+    try:
+        url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
+        response = requests.get(url)
+        tickers = [line.split('|')[0].strip() for line in response.text.split('\n') if line]
+        return tickers
+    except:
+        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]  # Liste par défaut
+
 # --- Interface ---
 st.markdown("""
 <div class="banner">
@@ -180,95 +172,97 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- Boutons de navigation ---
-st.markdown("""
-<div class="nav-buttons">
-    <a class="nav-button" href="#analyse">Analyser une entreprise</a>
-    <a class="nav-button" href="#planification">Planifier une analyse</a>
-</div>
-""", unsafe_allow_html=True)
+# --- Onglets ---
+tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
 
-# --- Section Analyse ---
-st.markdown('<div id="analyse">', unsafe_allow_html=True)
-ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "GMED").upper()
+with tab_analyse:
+    ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "GMED").upper()
 
-if st.button("Analyser"):
-    if ticker:
-        with st.spinner("Analyse en cours..."):
-            analysis = analyze_stock(ticker)
+    if st.button("Analyser"):
+        if ticker:
+            with st.spinner("Analyse en cours..."):
+                analysis = analyze_stock(ticker)
 
-        if "error" in analysis:
-            st.error(analysis["error"])
-        else:
-            # Score global
-            st.markdown(f"""
-            <div class="score-card">
-                Score global: <span class="score-number">{analysis['valid_count']}/{analysis['total']}</span>
-                <div style="font-size:14px;color:#9ca3af">critères vérifiés</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.markdown(f"""
-            ### {analysis['ticker']} - {analysis['name']}
-            **Prix actuel:** {analysis['current_price']:.2f} |
-            **Capitalisation:** {analysis['market_cap']:,.0f} |
-            **FCF Yield:** {analysis['fcf_yield']:.2f}% |
-            **RSI (14j):** {analysis['rsi']:.1f}
-            """)
-
-            # Liste des critères
-            st.markdown("<div class='criteria-grid'>", unsafe_allow_html=True)
-            for criterion, (valid, threshold) in analysis['results'].items():
-                status = "✅ Valide" if valid else "❌ Invalide"
-                css_class = "valid" if valid else "invalid"
+            if "error" in analysis:
+                st.error(analysis["error"])
+            else:
                 st.markdown(f"""
-                <div class="criterion {css_class}">
-                    <span>{criterion}</span>
-                    <div>
-                        <span class="status {css_class}">{status}</span>
-                        <span style="color:#9ca3af;font-size:12px;margin-left:10px">{threshold}</span>
-                    </div>
+                <div class="score-card">
+                    Score: <span class="score-number">{analysis['valid_count']}/{analysis['total']}</span>
+                    <div style="font-size:14px;color:#9ca3af">critères vérifiés</div>
                 </div>
                 """, unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Section Planification ---
-st.markdown('<div id="planification" style="margin-top:40px;">', unsafe_allow_html=True)
-st.markdown("<h2 style='color:var(--primary);'>Planifier une analyse</h2>", unsafe_allow_html=True)
+                st.markdown(f"""
+                ### {analysis['ticker']} - {analysis['name']}
+                **Prix actuel:** {analysis['current_price']:.2f} |
+                **Capitalisation:** {analysis['market_cap']:,.0f} |
+                **FCF Yield:** {analysis['fcf_yield']:.2f}% |
+                **RSI (14j):** {analysis['rsi']:.1f}
+                """)
 
-frequency = st.selectbox(
-    "Fréquence d'analyse",
-    ["Toutes les semaines", "Toutes les 2 semaines", "Tous les mois"]
-)
+                # Liste des critères
+                st.markdown('<div class="criteria-container">', unsafe_allow_html=True)
+                for criterion, (valid, threshold) in analysis['results'].items():
+                    status = "✅ Valide" if valid else "❌ Invalide"
+                    css_class = "valid" if valid else "invalid"
+                    st.markdown(f"""
+                    <div class="criterion {css_class}">
+                        <span>{criterion}</span>
+                        <div>
+                            <span class="status {css_class}">{status}</span>
+                            <span style="color:#9ca3af;font-size:12px;margin-left:10px">{threshold}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-tickers = st.text_area("Liste des tickers à analyser (un par ligne)", "AAPL\nMSFT\nGMED")
+                # Critères GuruFocus sous le RSI
+                st.markdown("""
+                <div class="gf-section">
+                    <h3 style="color:var(--warning);margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
+                    <div class="gf-item">
+                        <span>GF Valuation (Significatively/Modestly undervalued)</span>
+                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                    </div>
+                    <div class="gf-item">
+                        <span>GF Score (≥ 70)</span>
+                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                    </div>
+                    <div class="gf-item">
+                        <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
+                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
+                    </div>
+                </div>
+                """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-if st.button("Programmer l'analyse"):
-    if tickers.strip():
-        tickers_list = [t.strip().upper() for t in tickers.split('\n') if t.strip()]
-        st.success(f"✅ Analyse programmée pour {len(tickers_list)} entreprises ({', '.join(tickers_list)}) toutes les {frequency.lower()}")
-    else:
-        st.warning("Veuillez entrer au moins un ticker")
+                if analysis['valid_count'] == analysis['total']:
+                    st.success("🎉 Cette action répond à TOUS les critères vérifiables automatiquement!")
+                elif analysis['valid_count'] >= analysis['total']*0.7:
+                    st.warning("⚠️ Cette action est intéressante - vérifiez les critères GuruFocus")
+                else:
+                    st.error("❌ Cette action ne répond pas à suffisamment de critères")
 
-# --- Section GuruFocus ---
-st.markdown("""
-<div class="gf-section">
-    <h3 style="color:var(--warning);margin-top:0;">⚠️ Critères à vérifier sur GuruFocus</h3>
-    <div class="gf-item">
-        <span>GF Valuation (Significatively/Modestly undervalued)</span>
-        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-    </div>
-    <div class="gf-item">
-        <span>GF Score (≥ 70)</span>
-        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-    </div>
-    <div class="gf-item">
-        <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
-        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-    </div>
-    <a href="{gf_url}" class="gf-button" target="_blank">Accéder à GuruFocus</a>
-</div>
-""".replace("{gf_url}", f"https://www.gurufocus.com/stock/{ticker}/summary" if 'ticker' in locals() else "#"), unsafe_allow_html=True)
+with tab_planification:
+    st.markdown("<div class='plan-section'>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:var(--primary);'>Planification complète</h2>", unsafe_allow_html=True)
+
+    frequency = st.selectbox(
+        "Fréquence d'analyse",
+        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"]
+    )
+
+    start_date = st.date_input("Date de la première analyse", datetime.now())
+    start_time = st.time_input("Heure de la première analyse", time(22, 0))
+
+    tickers = get_nasdaq_tickers()
+    st.info(f"{len(tickers)} entreprises NASDAQ seront analysées")
+
+    if st.button("Lancer l'analyse complète"):
+        st.success(f"✅ Analyse complète programmée pour {len(tickers)} entreprises NASDAQ "
+                  f"toutes les {frequency.lower()} à partir du {start_date} à 22h00")
+        st.write("Liste des premières entreprises à analyser:")
+        st.write(tickers[:10])
+        st.write("...")
 
 # --- Pied de page ---
 st.markdown("""
