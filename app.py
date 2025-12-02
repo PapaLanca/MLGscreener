@@ -126,7 +126,7 @@ st.markdown("""
 <div class="footer">
     <div class="footer-title">MLG Screener - Outil d'analyse financière professionnel</div>
 
-        Proposé gratuitement par <strong>EURL MLG Courtage
+        Proposé gratuitement par EURL MLG Courtage
         Courtier en assurances agréé ORIAS n°24002055
         SIRET : 98324762800016
         www.mlgcourtage.fr
