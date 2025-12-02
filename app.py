@@ -8,7 +8,7 @@ from datetime import datetime
 # --- Configuration de la page ---
 st.set_page_config(
     page_title="MLG Screener - EURL MLG Courtage",
-    page_icon="\:shield:",
+    page_icon=":shield:",
     layout="wide"
 )
 
@@ -16,9 +16,9 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat\:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
 
-    \:root {
+    :root {
         --primary-color: #1a365d;
         --secondary-color: #8bb8e8;
         --text-color: #1a365d;
@@ -90,7 +90,7 @@ st.markdown(
         text-decoration: none;
     }
 
-    a\:hover {
+    a:hover {
         text-decoration: underline;
     }
 
@@ -171,7 +171,7 @@ def main():
     display_legal_preamble()
 
     # --- Onglets ---
-    tab1, tab2, tab3 = st.tabs(["🔍 <followup encodedFollowup="%7B%22snippet%22%3A%22Analyse%20Manuelle%22%2C%22question%22%3A%22Quels%20types%20d'analyses%20peuvent%20%C3%AAtre%20effectu%C3%A9es%20dans%20l'onglet%20Analyse%20Manuelle%3F%22%2C%22id%22%3A%220cd1d287-c0e6-487b-a1f5-c92c0176abe6%22%7D" />", "⏰ Planification", "🏢 À Propos"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Analyse Manuelle", "⏰ Planification", "🏢 À Propos"])
 
     with tab1:
         st.header("Analyse Manuelle")
@@ -181,7 +181,7 @@ def main():
             # Ajoute ici la logique d'analyse
 
     with tab2:
-        st.header("<followup encodedFollowup="%7B%22snippet%22%3A%22Planification%20Automatis%C3%A9e%22%2C%22question%22%3A%22Comment%20fonctionne%20exactement%20la%20planification%20automatis%C3%A9e%20des%20analyses%3F%22%2C%22id%22%3A%22966e05ff-237c-40c5-801f-8e7ab8d9b250%22%7D" />")
+        st.header("Planification Automatisée")
         frequency = st.selectbox(
             "Fréquence d'analyse",
             ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"]
@@ -196,9 +196,9 @@ def main():
             **MLG Screener** est un outil développé par [EURL MLG Courtage](https://mlgcourtage.fr) pour aider les investisseurs à identifier des opportunités sur les marchés financiers.
 
             Notre approche combine :
-            - Une <followup encodedFollowup="%7B%22snippet%22%3A%22analyse%20technique%20rigoureuse%22%2C%22question%22%3A%22Quels%20indicateurs%20ou%20m%C3%A9thodes%20sont%20utilis%C3%A9s%20pour%20l'analyse%20technique%20dans%20MLG%20Screener%3F%22%2C%22id%22%3A%2208115ab4-478c-480d-97dd-1b43e39460a2%22%7D" />
-            - Des <followup encodedFollowup="%7B%22snippet%22%3A%22crit%C3%A8res%20fondamentaux%20stricts%22%2C%22question%22%3A%22Quels%20sont%20les%20principaux%20crit%C3%A8res%20fondamentaux%20pris%20en%20compte%20par%20l'outil%3F%22%2C%22id%22%3A%22760ba7ba-5998-4707-b1f6-ff69d0b6283f%22%7D" />
-            - Une <followup encodedFollowup="%7B%22snippet%22%3A%22veille%20informationnelle%20en%20temps%20r%C3%A9el%22%2C%22question%22%3A%22Quelles%20sources%20ou%20outils%20sont%20utilis%C3%A9s%20pour%20assurer%20la%20veille%20informationnelle%3F%22%2C%22id%22%3A%225c76b3ea-3154-40d5-a0d6-ee7b5e06f1a2%22%7D" />
+            - Une analyse technique rigoureuse
+            - Des critères fondamentaux stricts
+            - Une veille informationnelle en temps réel
 
             Pour en savoir plus sur nos services, visitez notre site : [mlgcourtage.fr](https://mlgcourtage.fr)
             """
