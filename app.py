@@ -1,4 +1,6 @@
 import streamlit as st
+import yfinance as yf
+from datetime import datetime
 
 # --- Configuration de la page ---
 st.set_page_config(
@@ -121,8 +123,20 @@ st.markdown(
         border: none !important;
     }
 
+    .stTextInput>div>div>input {
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-color) !important;
+    }
+
     a:not(.nav-button) {
         color: var(--primary-color) !important;
+    }
+
+    .section-title {
+        color: var(--primary-color);
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 10px;
+        margin-bottom: 20px;
     }
     </style>
     """,
@@ -138,7 +152,7 @@ def display_banner():
         try:
             st.image(logo_url, width=180)
         except:
-            st.error("Logo introuvable. Vérifiez le nom du fichier et la branche.")
+            st.error("Logo introuvable")
     with col2:
         st.markdown(
             """
@@ -149,26 +163,60 @@ def display_banner():
             unsafe_allow_html=True
         )
 
-# --- Boutons de navigation ---
-def display_nav_buttons():
-    st.markdown(
-        """
-        <div class="nav-buttons">
-            <a class="nav-button" href="#analyse">Analyser une entreprise</a>
-            <a class="nav-button" href="#planification">Planifier une analyse</a>
-        </div>
-        """,
-        unsafe_allow_html=True
+# --- Section Analyse d'entreprise ---
+def display_analyse_section():
+    st.markdown('<div class="content-section" id="analyse">', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-title">Analyser une entreprise</h2>', unsafe_allow_html=True)
+
+    ticker = st.text_input("Entrez le ticker de l'entreprise (ex: AAPL, MSFT, TSLA)", "AAPL")
+    if st.button("Analyser"):
+        if ticker:
+            with st.spinner(f"Analyse de {ticker} en cours..."):
+                try:
+                    stock = yf.Ticker(ticker)
+                    info = stock.info
+                    hist = stock.history(period="1y")
+
+                    st.subheader(f"Informations sur {ticker} - {info.get('longName', ticker)}")
+                    st.write(f"**Secteur:** {info.get('sector', 'N/A')} | **Industrie:** {info.get('industry', 'N/A')}")
+                    st.write(f"**Prix actuel:** {info.get('currentPrice', 'N/A')} {info.get('currency', '')}")
+                    st.write(f"**Capitalisation boursière:** {info.get('marketCap', 'N/A'):,}")
+
+                    st.markdown("---")
+                    st.subheader("Performance (1 an)")
+                    st.line_chart(hist['Close'])
+
+                    st.markdown("---")
+                    st.subheader("Indicateurs clés")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("P/E Ratio", info.get('trailingPE', 'N/A'))
+                        st.metric("Bénéfice par action", info.get('trailingEps', 'N/A'))
+                    with col2:
+                        st.metric("Dividende", info.get('dividendYield', 'N/A'))
+                        st.metric("Volume moyen", f"{info.get('averageVolume', 'N/A'):,}")
+
+                except Exception as e:
+                    st.error(f"Erreur lors de l'analyse: {e}")
+        else:
+            st.warning("Veuillez entrer un ticker valide")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --- Section Planification ---
+def display_planification_section():
+    st.markdown('<div class="content-section" id="planification">', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-title">Planifier une analyse</h2>', unsafe_allow_html=True)
+
+    frequency = st.selectbox(
+        "Fréquence d'analyse",
+        ["Toutes les semaines", "Toutes les 2 semaines", "Toutes les 4 semaines", "Tous les mois"]
     )
 
-# --- Contenu principal ---
-def display_main_content():
-    st.markdown('<div class="content-section">', unsafe_allow_html=True)
-    st.header("À propos de MLG Screener")
-    st.write("""
-    MLG Screener est un outil conçu pour vous aider à identifier des opportunités d'investissement.
-    Notre objectif est de vous fournir des analyses techniques et fondamentales pour vous aider à prendre des décisions éclairées.
-    """)
+    tickers = st.text_area("Liste des tickers à analyser (un par ligne)", "AAPL\nMSFT\nTSLA")
+
+    if st.button("Programmer l'analyse"):
+        st.success(f"Analyse programmée pour: {frequency}. Tickers: {tickers.replace('\n', ', ')}")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Pied de page ---
@@ -185,11 +233,24 @@ def display_footer():
         unsafe_allow_html=True
     )
 
+# --- Navigation ---
+def display_navigation():
+    st.markdown(
+        """
+        <div class="nav-buttons">
+            <a class="nav-button" href="#analyse">Analyser une entreprise</a>
+            <a class="nav-button" href="#planification">Planifier une analyse</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 # --- Application principale ---
 def main():
     display_banner()
-    display_nav_buttons()
-    display_main_content()
+    display_navigation()
+    display_analyse_section()
+    display_planification_section()
     display_footer()
 
 if __name__ == "__main__":
