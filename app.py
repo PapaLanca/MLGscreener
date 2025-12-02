@@ -5,7 +5,7 @@ import numpy as np
 import requests
 import io
 import csv
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 # --- Configuration ---
 st.set_page_config(
@@ -14,6 +14,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# --- Constantes ---
+NEWS_API_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"  # Votre clé API NewsAPI
 
 # --- CSS avec fond sombre ---
 st.markdown("""
@@ -73,18 +76,6 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .news-title {color:var(--text);font-weight:600;margin-bottom:5px;}
 .news-source {color:#9ca3af;font-size:12px;}
 .footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
-
-.stTextInput>div>div>input, .stTextArea>div>textarea, .stSelectbox>div>div>select {
-    background-color: var(--dark-card) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--border) !important;
-}
-.stButton>button {
-    background-color: var(--primary) !important;
-    color: white !important;
-    border-radius: 6px !important;
-    border: none !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,18 +101,15 @@ def calculate_rsi(prices, period=14):
     return rsi[-1]
 
 # --- Récupération des news via NewsAPI ---
-def get_financial_news(ticker, api_key=None, max_results=5):
-    if not api_key:
-        # Clé API par défaut (à remplacer par votre propre clé en production)
-        api_key = "DEMO_KEY"  # Remplacez par votre clé NewsAPI
-
+@st.cache_data(ttl=3600)  # Cache pour 1 heure
+def get_financial_news(ticker):
     try:
-        url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=fr&apiKey={api_key}"
+        url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=fr&apiKey={NEWS_API_KEY}"
         response = requests.get(url)
         data = response.json()
 
         if data['status'] == 'ok':
-            articles = data['articles'][:max_results]
+            articles = data['articles'][:5]  # Limité à 5 articles
             return [{
                 'title': article['title'],
                 'source': article['source']['name'],
@@ -129,7 +117,8 @@ def get_financial_news(ticker, api_key=None, max_results=5):
                 'publishedAt': article['publishedAt']
             } for article in articles]
         return []
-    except:
+    except Exception as e:
+        st.error(f"Erreur NewsAPI: {str(e)}")
         return []
 
 # --- Analyse complète avec valeurs ---
@@ -261,7 +250,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières</div>
+        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières en temps réel</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -271,12 +260,12 @@ tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier 
 
 with tab_analyse:
     ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "GMED").upper()
-    news_api_key = st.text_input("Clé API NewsAPI (optionnelle)", type="password")
 
     if st.button("Analyser"):
         if ticker:
             with st.spinner("Analyse en cours..."):
                 analysis = analyze_stock(ticker)
+                news = get_financial_news(ticker)
 
             if "error" in analysis:
                 st.error(analysis["error"])
@@ -315,7 +304,6 @@ with tab_analyse:
                 st.markdown('<div class="news-section">', unsafe_allow_html=True)
                 st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
 
-                news = get_financial_news(ticker, news_api_key)
                 if news:
                     for article in news:
                         st.markdown(f"""
