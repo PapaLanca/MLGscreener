@@ -1,4 +1,6 @@
 import streamlit as st
+import base64
+from io import BytesIO
 import pandas as pd
 import yfinance as yf
 import requests
@@ -7,39 +9,41 @@ from datetime import datetime
 
 # --- Configuration de la page ---
 st.set_page_config(
-    page_title="MLG Screener - EURL MLG Courtage",
-    page_icon=":shield:",
+    page_title="MLG Courtage - Solutions d'Investissement",
+    page_icon=":chart_with_upwards_trend:",
     layout="wide"
 )
 
-# --- CSS personnalisé pour le branding MLG Courtage ---
+# --- CSS personnalisé pour un style professionnel avec images ---
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap');
 
     :root {
-        --primary-color: #1a365d;
-        --secondary-color: #8bb8e8;
-        --text-color: #1a365d;
-        --light-color: #f8f9fa;
-        --border-color: #dee2e6;
+        --primary-color: #1e3a8a;
+        --secondary-color: #3b82f6;
+        --text-color: #1e3a8a;
+        --light-color: #f8fafc;
+        --border-color: #e2e8f0;
     }
 
     body {
         font-family: 'Montserrat', sans-serif;
+        background-color: var(--light-color);
     }
 
     .header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        padding: 15px 0;
+        padding: 20px;
+        background-color: white;
         border-bottom: 1px solid var(--border-color);
         margin-bottom: 20px;
-        background-color: white;
     }
 
-    .company-name {
+    .logo {
         font-size: 24px;
         font-weight: 700;
         color: var(--primary-color);
@@ -49,29 +53,132 @@ st.markdown(
         font-size: 14px;
         color: var(--text-color);
         font-style: italic;
-        margin-left: 10px;
+    }
+
+    .nav {
+        display: flex;
+        gap: 20px;
+    }
+
+    .nav a {
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .nav a:hover {
+        color: var(--secondary-color);
+    }
+
+    .main-content {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .hero-section {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        color: white;
+        padding: 40px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: url('https://images.unsplash.com/photo-1630108607727-999ca9b752c8?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80') no-repeat center center;
+        background-size: cover;
+        opacity: 0.3;
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 1;
+    }
+
+    .section-title {
+        color: var(--primary-color);
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+    }
+
+    .section-icon {
+        margin-right: 10px;
+    }
+
+    .feature-card {
+        background-color: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid var(--secondary-color);
+    }
+
+    .feature-card h3 {
+        color: var(--primary-color);
+        margin-top: 0;
+    }
+
+    .feature-image {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin-bottom: 15px;
     }
 
     .footer {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 30px 20px 20px;
         margin-top: 40px;
-        padding: 20px;
-        text-align: center;
-        color: var(--text-color);
-        font-size: 12px;
-        background-color: var(--light-color);
-        border-top: 1px solid var(--border-color);
+    }
+
+    .footer-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .footer-section h3 {
+        color: white;
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+
+    .footer-section p, .footer-section a {
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: 5px;
+        text-decoration: none;
+    }
+
+    .footer-section a:hover {
+        color: white;
     }
 
     .disclaimer {
         font-size: 12px;
-        color: #6c757d;
-        margin-top: 10px;
-        font-style: italic;
-        text-align: left;
+        color: rgba(255, 255, 255, 0.7);
+        margin-top: 20px;
+        line-height: 1.4;
     }
 
     .legal-box {
-        background-color: var(--light-color);
+        background-color: rgba(30, 58, 138, 0.1);
         padding: 15px;
         border-radius: 8px;
         margin-bottom: 20px;
@@ -85,65 +192,75 @@ st.markdown(
         border: none;
     }
 
-    a {
-        color: var(--primary-color);
-        text-decoration: none;
+    .stTextInput>div>div>input {
+        border: 1px solid var(--border-color);
     }
 
-    a:hover {
-        text-decoration: underline;
-    }
-
-    .criteria-box {
-        border-left: 4px solid;
-        padding: 10px;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
-
-    .valid {
-        border-left-color: #28a745;
-        background-color: rgba(40, 167, 69, 0.1);
-    }
-
-    .invalid {
-        border-left-color: #dc3545;
-        background-color: rgba(220, 53, 69, 0.1);
+    .stSelectbox>div>div>select {
+        border: 1px solid var(--border-color);
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- En-tête avec nom de l'application ---
+# --- En-tête professionnel ---
 def display_header():
-    st.markdown(f"""
-    <div class="header">
-        <div class="company-name">MLG SCREENER
-            <span class="tagline">- votre courtier en assurances -</span>
+    st.markdown(
+        f"""
+        <div class="header">
+            <div>
+                <div class="logo">MLG COURTAGE</div>
+                <div class="tagline">Solutions d'investissement sur mesure</div>
+            </div>
+            <div class="nav">
+                <a href="#analyse">Analyse</a>
+                <a href="#planification">Planification</a>
+                <a href="#apropos">À Propos</a>
+                <a href="https://mlgcourtage.fr" target="_blank">Site Web</a>
+            </div>
         </div>
-        <div style="font-size: 14px; color: var(--text-color);">par <a href="https://mlgcourtage.fr" target="_blank">EURL MLG Courtage</a></div>
-    </div>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
-# --- Pied de page avec mentions légales ---
-def display_footer():
+# --- Section héroïque avec image ---
+def display_hero_section():
     st.markdown(
         """
+        <div class="hero-section">
+            <div class="hero-content">
+                <h1>Découvrez les opportunités d'investissement</h1>
+                <p>Identifiez les pépite et licornes du marché avec nos outils d'analyse avancés.</p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# --- Pied de page professionnel ---
+def display_footer():
+    st.markdown(
+        f"""
         <div class="footer">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <p><strong>EURL MLG Courtage</strong></p>
-                    <p>983 247 628 R.C.S. Paris</p>
-                    <p>Courtier en assurances</p>
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>MLG Courtage</h3>
+                    <p>EURL MLG Courtage</p>
+                    <p>SIRET : 98324762800013</p>
+                    <p>ORIAS : 12345678</p>
+                    <p>📍 Adresse : [Votre adresse]</p>
                 </div>
-                <div style="text-align: right;">
-                    <p>🌐 <a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a></p>
+                <div class="footer-section">
+                    <h3>Contact</h3>
+                    <p>📞 Téléphone : 0X XX XX XX XX</p>
+                    <p>✉️ Email : contact@mlgcourtage.fr</p>
                 </div>
             </div>
             <div class="disclaimer">
                 <p><strong>Disclaimer :</strong></p>
-                <p>MLG Screener est un outil d'aide à la décision d'investissement. Les informations fournies ne constituent pas un conseil en investissement, une recommandation d'achat ou de vente, ni une incitation à investir. Tout investissement comporte des risques, y compris la perte en capital. Il est fortement recommandé d'effectuer vos propres recherches et de consulter un conseiller financier indépendant avant de prendre toute décision d'investissement. EURL MLG Courtage ne saurait être tenue responsable des décisions prises sur la base des informations fournies par cet outil.</p>
+                <p>MLG Courtage est un outil d'aide à la décision d'investissement. Les informations fournies ne constituent pas un conseil en investissement, une recommandation d'achat ou de vente, ni une incitation à investir. Tout investissement comporte des risques, y compris la perte en capital. Il est fortement recommandé d'effectuer vos propres recherches et de consulter un conseiller financier indépendant avant de prendre toute décision d'investissement. EURL MLG Courtage ne saurait être tenue responsable des décisions prises sur la base des informations fournies par cet outil.</p>
+                <p>© 2025 EURL MLG Courtage. Tous droits réservés.</p>
             </div>
         </div>
         """,
@@ -168,12 +285,47 @@ def display_legal_preamble():
 # --- Fonction principale ---
 def main():
     display_header()
+    display_hero_section()
+
+    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+
     display_legal_preamble()
 
+    # --- Section Opportunités ---
+    st.markdown('<div id="analyse"></div>', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-title"><span class="section-icon">🔍</span> Opportunités d\'Investissement</h2>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            f"""
+            <div class="feature-card">
+                <img class="feature-image" src="https://images.unsplash.com/photo-1630108607727-999ca9b752c8?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80" alt="Trading Opportunities">
+                <h3>Trading & Opportunités</h3>
+                <p>Identifiez les meilleures opportunités de trading avec nos outils d'analyse technique et fondamentale.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        st.markdown(
+            f"""
+            <div class="feature-card">
+                <img class="feature-image" src="https://images.unsplash.com/photo-1611974928042caf4008a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80" alt="High Yield Investments">
+                <h3>Rendements Élevés</h3>
+                <p>Découvrez les actifs avec les meilleurs rendements et optimisez votre portefeuille.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     # --- Onglets ---
-    tab1, tab2, tab3 = st.tabs(["🔍 Analyse Manuelle", "⏰ Planification", "🏢 À Propos"])
+    tab1, tab2, tab3 = st.tabs(["📊 Analyse Manuelle", "⏰ Planification", "🏢 À Propos"])
 
     with tab1:
+        st.markdown('<div id="analyse"></div>', unsafe_allow_html=True)
         st.header("Analyse Manuelle")
         ticker = st.text_input("Entrez un ticker (ex: AAPL)", "AAPL").upper()
         if st.button("Analyser"):
@@ -181,6 +333,7 @@ def main():
             # Ajoute ici la logique d'analyse
 
     with tab2:
+        st.markdown('<div id="planification"></div>', unsafe_allow_html=True)
         st.header("Planification Automatisée")
         frequency = st.selectbox(
             "Fréquence d'analyse",
@@ -190,19 +343,27 @@ def main():
             st.success(f"Planification activée pour une analyse {frequency} à minuit.")
 
     with tab3:
-        st.header("À Propos de MLG Screener")
+        st.markdown('<div id="apropos"></div>', unsafe_allow_html=True)
+        st.header("À Propos de MLG Courtage")
         st.markdown(
             """
-            **MLG Screener** est un outil développé par [EURL MLG Courtage](https://mlgcourtage.fr) pour aider les investisseurs à identifier des opportunités sur les marchés financiers.
-
-            Notre approche combine :
-            - Une analyse technique rigoureuse
-            - Des critères fondamentaux stricts
-            - Une veille informationnelle en temps réel
-
-            Pour en savoir plus sur nos services, visitez notre site : [mlgcourtage.fr](https://mlgcourtage.fr)
-            """
+            <div class="feature-card">
+                <img class="feature-image" src="https://images.unsplash.com/photo-1579389083078-7e055ed9f87d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80" alt="About MLG Courtage">
+                <h3>Notre Mission</h3>
+                <p>MLG Courtage est une entreprise spécialisée dans les solutions d'investissement sur mesure. Nous proposons des outils d'analyse financière pour aider nos clients à prendre des décisions éclairées.</p>
+                <p>Notre approche combine :</p>
+                <ul>
+                    <li>Une analyse technique rigoureuse</li>
+                    <li>Des critères fondamentaux stricts</li>
+                    <li>Une veille informationnelle en temps réel</li>
+                </ul>
+                <p>Pour en savoir plus, visitez notre site : [mlgcourtage.fr](https://mlgcourtage.fr)</p>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     display_footer()
 
