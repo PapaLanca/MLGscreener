@@ -140,7 +140,7 @@ st.markdown("""
     
 
     copyright
-        © 2023 EURL MLG Courtage - Tous droits réservés
+        © 2025 EURL MLG Courtage - Tous droits réservés
     
 </div>
 """, unsafe_allow_html=True)
