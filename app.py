@@ -126,23 +126,21 @@ st.markdown("""
 <div class="footer">
     <div class="footer-title">MLG Screener - Outil d'analyse financière professionnel</div>
 
-    <div class="company-info">
-        Proposé gratuitement par <strong>EURL MLG Courtage</strong><br>
-        Courtier en assurances agréé ORIAS n°24002055<br>
-        SIRET : 98324762800016<br>
-        <a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a>
-    </div>
+        Proposé gratuitement par <strong>EURL MLG Courtage
+        Courtier en assurances agréé ORIAS n°24002055
+        SIRET : 98324762800016
+        www.mlgcourtage.fr
+   
 
-    <div class="disclaimer">
-        <strong>Disclaimer :</strong><br><br>
-        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.<br>
-        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.<br>
-        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.<br>
+    
+        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
         Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
-    </div>
+    
 
-    <div class="copyright">
+    copyright
         © 2023 EURL MLG Courtage - Tous droits réservés
-    </div>
+    
 </div>
 """, unsafe_allow_html=True)
