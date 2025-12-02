@@ -5,7 +5,7 @@ import numpy as np
 import requests
 import io
 import csv
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 # --- Configuration ---
 st.set_page_config(
@@ -54,7 +54,7 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .criterion.invalid {border-left:4px solid var(--invalid);}
 .status-container {display:flex;flex-direction:column;align-items:flex-end;}
 .status {font-weight:600;}
-.status.valid {color:var(--valid);}
+.status.valid {color:var(--valid;}
 .status.invalid {color:var(--invalid);}
 .value {font-size:12px;color:#9ca3af;margin-top:2px;}
 
@@ -76,6 +76,9 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .news-title {color:var(--text);font-weight:600;margin-bottom:5px;}
 .news-source {color:#9ca3af;font-size:12px;}
 .footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
+
+.institutional-holders {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
+.holder-item {display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,30 +103,44 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI (améliorée pour Apple) ---
+# --- Récupération des news via NewsAPI (améliorée) ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
     try:
-        # Recherche améliorée pour Apple
         query = f"{ticker} OR Apple Inc" if ticker == "AAPL" else ticker
         url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&language=fr&pageSize=5&apiKey={NEWS_API_KEY}"
         response = requests.get(url)
         data = response.json()
 
         if data['status'] == 'ok' and data['totalResults'] > 0:
-            articles = data['articles'][:5]
             return [{
                 'title': article['title'],
                 'source': article['source']['name'],
                 'url': article['url'],
                 'publishedAt': article['publishedAt']
-            } for article in articles]
+            } for article in data['articles'][:5]]
         return []
-    except Exception as e:
-        st.error(f"Erreur NewsAPI: {str(e)}")
+    except:
         return []
 
-# --- Analyse complète avec valeurs ---
+# --- Récupération des principaux actionnaires institutionnels ---
+def get_institutional_holders(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        holders = stock.institutional_holders
+        if holders is not None and not holders.empty:
+            top_holders = holders.head(5)
+            return [{
+                'name': row['Holder'],
+                'shares': row['Shares'],
+                'dateReported': row['Date Reported'],
+                'pctHeld': row['% Out']
+            } for _, row in top_holders.iterrows()]
+        return []
+    except:
+        return []
+
+# --- Analyse complète avec valeurs corrigées ---
 def analyze_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -133,11 +150,26 @@ def analyze_stock(ticker):
         # Calcul des métriques avec valeurs
         current_price = info.get('currentPrice', 'N/A')
         avg_volume = info.get('averageVolume', 0)
-        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-        debt_to_equity = info.get('debtToEquity', 'N/A')
-        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
+
+        # ROE avec vérification
+        roe = info.get('returnOnEquity', 0)
+        if roe is not None:
+            roe = roe * 100
+
+        # Debt-to-Equity avec vérification
+        debt_to_equity = info.get('debtToEquity', 0)
+
+        # Ownership institutionnel corrigé
+        inst_ownership = info.get('institutionalOwnership', 0)
+        if inst_ownership is None:
+            holders = get_institutional_holders(ticker)
+            inst_ownership = sum(h['pctHeld'] for h in holders) if holders else 0
+
         beta = info.get('beta', 'N/A')
-        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
+        eps_growth = info.get('earningsQuarterlyGrowth', 0)
+        if eps_growth is not None:
+            eps_growth = eps_growth * 100
+
         fcf = info.get('freeCashflow', 0)
         shares_outstanding = info.get('sharesOutstanding', 1)
         fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
@@ -160,12 +192,12 @@ def analyze_stock(ticker):
             "ROE": {
                 "valid": roe >= 10,
                 "threshold": "≥ 10%",
-                "value": f"{roe:.1f}%"
+                "value": f"{roe:.1f}%" if roe is not None else "N/A"
             },
             "Debt-to-Equity": {
-                "valid": 0 <= debt_to_equity <= 0.8 if isinstance(debt_to_equity, (int, float)) else False,
+                "valid": 0 <= debt_to_equity <= 0.8,
                 "threshold": "0-0.8",
-                "value": f"{debt_to_equity:.2f}" if isinstance(debt_to_equity, (int, float)) else "N/A"
+                "value": f"{debt_to_equity:.2f}"
             },
             "Ownership institutionnel": {
                 "valid": inst_ownership > 0,
@@ -180,7 +212,7 @@ def analyze_stock(ticker):
             "Croissance BPA": {
                 "valid": eps_growth > 0,
                 "threshold": "> 0%",
-                "value": f"{eps_growth:.1f}%"
+                "value": f"{eps_growth:.1f}%" if eps_growth is not None else "N/A"
             },
             "FCF/Action": {
                 "valid": fcf_per_share > 0,
@@ -199,6 +231,9 @@ def analyze_stock(ticker):
             }
         }
 
+        # Récupération des principaux actionnaires
+        holders = get_institutional_holders(ticker)
+
         valid_count = sum(1 for data in results.values() if data["valid"])
 
         return {
@@ -211,7 +246,8 @@ def analyze_stock(ticker):
             "market_cap": info.get('marketCap', 0),
             "fcf_yield": fcf_yield,
             "rsi": rsi,
-            "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary"
+            "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary",
+            "holders": holders
         }
     except Exception as e:
         return {"error": f"Erreur: {str(e)}"}
@@ -244,6 +280,19 @@ def generate_csv(analysis):
             result["value"]
         ])
 
+    # Ajout des actionnaires institutionnels
+    if 'holders' in analysis and analysis['holders']:
+        writer.writerow([])
+        writer.writerow(["Principaux actionnaires institutionnels"])
+        writer.writerow(["Nom", "Actions", "Date", "% Détenu"])
+        for holder in analysis['holders']:
+            writer.writerow([
+                holder['name'],
+                holder['shares'],
+                holder['dateReported'],
+                f"{holder['pctHeld']:.2f}%"
+            ])
+
     return output.getvalue().encode('utf-8')
 
 # --- Interface ---
@@ -252,7 +301,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières</div>
+        <div style="color:#9ca3af">Analyse fondamentale complète avec détails institutionnels</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -261,7 +310,7 @@ st.markdown("""
 tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
 
 with tab_analyse:
-    ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "AAPL").upper()
+    ticker = st.text_input("Entrez un ticker (ex: AAPL, MSFT, GMED)", "AAPL").upper()
 
     if st.button("Analyser"):
         if ticker:
@@ -302,6 +351,19 @@ with tab_analyse:
                     </div>
                     """, unsafe_allow_html=True)
 
+                # Section des actionnaires institutionnels
+                if analysis['holders']:
+                    st.markdown('<div class="institutional-holders">', unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:var(--primary);'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
+                    for holder in analysis['holders']:
+                        st.markdown(f"""
+                        <div class="holder-item">
+                            <span>{holder['name']}</span>
+                            <span>{holder['shares']:,.0f} actions ({holder['pctHeld']:.1f}%)</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
                 # Critères GuruFocus
                 st.markdown("""
                 <div class="gf-section">
@@ -332,7 +394,7 @@ with tab_analyse:
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Section NewsAPI déplacée sous les boutons
+                # Section NewsAPI
                 st.markdown('<div class="news-section">', unsafe_allow_html=True)
                 st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
 
@@ -348,7 +410,7 @@ with tab_analyse:
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée (vérifiez que le ticker est correct)</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée</div>", unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_planification:
@@ -373,6 +435,6 @@ st.markdown("""
 <div class="footer">
     <p><strong>EURL MLG Courtage</strong> - Courtier en assurances</p>
     <p>Outil développé selon la méthodologie décrite dans "Mon Screener.pdf"</p>
-    <p>Actualités financières fournies par <a href="https://newsapi.org" style="color:var(--primary);">NewsAPI</a></p>
+    <p>Données institutionnelles et actualités financières en temps réel</p>
 </div>
 """, unsafe_allow_html=True)
