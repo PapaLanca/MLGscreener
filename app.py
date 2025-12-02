@@ -5,7 +5,7 @@ import numpy as np
 import requests
 import io
 import csv
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 # --- Configuration ---
 st.set_page_config(
@@ -100,16 +100,18 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI ---
-@st.cache_data(ttl=3600)  # Cache pour 1 heure
+# --- Récupération des news via NewsAPI (améliorée pour Apple) ---
+@st.cache_data(ttl=3600)
 def get_financial_news(ticker):
     try:
-        url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=fr&apiKey={NEWS_API_KEY}"
+        # Recherche améliorée pour Apple
+        query = f"{ticker} OR Apple Inc" if ticker == "AAPL" else ticker
+        url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&language=fr&pageSize=5&apiKey={NEWS_API_KEY}"
         response = requests.get(url)
         data = response.json()
 
-        if data['status'] == 'ok':
-            articles = data['articles'][:5]  # Limité à 5 articles
+        if data['status'] == 'ok' and data['totalResults'] > 0:
+            articles = data['articles'][:5]
             return [{
                 'title': article['title'],
                 'source': article['source']['name'],
@@ -250,7 +252,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières en temps réel</div>
+        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -259,7 +261,7 @@ st.markdown("""
 tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
 
 with tab_analyse:
-    ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "GMED").upper()
+    ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "AAPL").upper()
 
     if st.button("Analyser"):
         if ticker:
@@ -300,25 +302,6 @@ with tab_analyse:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Section NewsAPI
-                st.markdown('<div class="news-section">', unsafe_allow_html=True)
-                st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
-
-                if news:
-                    for article in news:
-                        st.markdown(f"""
-                        <div class="news-item">
-                            <div class="news-title">{article['title']}</div>
-                            <div class="news-source">
-                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M')}
-                                <a href="{article['url']}" target="_blank" style="color:var(--primary);">Lire →</a>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée</div>", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
                 # Critères GuruFocus
                 st.markdown("""
                 <div class="gf-section">
@@ -338,7 +321,7 @@ with tab_analyse:
                 </div>
                 """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
 
-                # Bouton d'export CSV
+                # Boutons d'export
                 st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
                 csv = generate_csv(analysis)
                 st.download_button(
@@ -347,6 +330,25 @@ with tab_analyse:
                     file_name=f"analyse_{analysis['ticker']}.csv",
                     mime="text/csv"
                 )
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Section NewsAPI déplacée sous les boutons
+                st.markdown('<div class="news-section">', unsafe_allow_html=True)
+                st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
+
+                if news:
+                    for article in news:
+                        st.markdown(f"""
+                        <div class="news-item">
+                            <div class="news-title">{article['title']}</div>
+                            <div class="news-source">
+                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M')}
+                                <a href="{article['url']}" target="_blank" style="color:var(--primary);">Lire →</a>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée (vérifiez que le ticker est correct)</div>", unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_planification:
