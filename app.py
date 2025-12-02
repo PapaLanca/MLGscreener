@@ -41,12 +41,18 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .score-number {font-size:32px;font-weight:700;color:var(--valid);}
 
 .criteria-container {margin:20px 0;}
-.criterion {display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--dark-card);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;}
+.criterion {
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px;background:var(--dark-card);border-radius:6px;
+    border:1px solid var(--border);margin-bottom:8px;
+}
 .criterion.valid {border-left:4px solid var(--valid);}
 .criterion.invalid {border-left:4px solid var(--invalid);}
+.status-container {display:flex;flex-direction:column;align-items:flex-end;}
 .status {font-weight:600;}
 .status.valid {color:var(--valid);}
 .status.invalid {color:var(--invalid);}
+.value {font-size:12px;color:#9ca3af;margin-top:2px;}
 
 .gf-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
 .gf-item {display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
@@ -97,21 +103,21 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Analyse complète ---
+# --- Analyse complète avec valeurs ---
 def analyze_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
         hist = stock.history(period="3mo", interval="1d")
 
-        # Calcul des métriques
-        current_price = info.get('currentPrice')
+        # Calcul des métriques avec valeurs
+        current_price = info.get('currentPrice', 'N/A')
         avg_volume = info.get('averageVolume', 0)
         roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-        debt_to_equity = info.get('debtToEquity', 0)
-        inst_ownership = info.get('institutionalOwnership', 0)
-        beta = info.get('beta', 1)
-        eps_growth = info.get('earningsQuarterlyGrowth', 0)
+        debt_to_equity = info.get('debtToEquity', 'N/A')
+        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
+        beta = info.get('beta', 'N/A')
+        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
         fcf = info.get('freeCashflow', 0)
         shares_outstanding = info.get('sharesOutstanding', 1)
         fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
@@ -124,20 +130,56 @@ def analyze_stock(ticker):
         if current_price and current_price > 0 and fcf_per_share > 0:
             fcf_yield = (fcf_per_share / current_price) * 100
 
-        # Vérification des critères
+        # Vérification des critères avec valeurs
         results = {
-            "Volume quotidien": (avg_volume >= 100000, "≥ 100k"),
-            "ROE": (roe >= 10, "≥ 10%"),
-            "Debt-to-Equity": (0 <= debt_to_equity <= 0.8, "0-0.8"),
-            "Ownership institutionnel": (inst_ownership > 0, "> 0%"),
-            "Beta": (0.5 < beta < 1.5, "0.5-1.5"),
-            "Croissance BPA": (eps_growth > 0, "> 0%"),
-            "FCF/Action": (fcf_per_share > 0, "> 0"),
-            "FCF Yield": (fcf_yield > 5, "> 5%"),
-            "RSI": (40 < rsi < 55, f"{rsi:.1f} (40-55)")
+            "Volume quotidien": {
+                "valid": avg_volume >= 100000,
+                "threshold": "≥ 100k",
+                "value": f"{avg_volume:,.0f}"
+            },
+            "ROE": {
+                "valid": roe >= 10,
+                "threshold": "≥ 10%",
+                "value": f"{roe:.1f}%"
+            },
+            "Debt-to-Equity": {
+                "valid": 0 <= debt_to_equity <= 0.8 if isinstance(debt_to_equity, (int, float)) else False,
+                "threshold": "0-0.8",
+                "value": f"{debt_to_equity:.2f}" if isinstance(debt_to_equity, (int, float)) else "N/A"
+            },
+            "Ownership institutionnel": {
+                "valid": inst_ownership > 0,
+                "threshold": "> 0%",
+                "value": f"{inst_ownership:.1f}%"
+            },
+            "Beta": {
+                "valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False,
+                "threshold": "0.5-1.5",
+                "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A"
+            },
+            "Croissance BPA": {
+                "valid": eps_growth > 0,
+                "threshold": "> 0%",
+                "value": f"{eps_growth:.1f}%"
+            },
+            "FCF/Action": {
+                "valid": fcf_per_share > 0,
+                "threshold": "> 0",
+                "value": f"{fcf_per_share:.2f}"
+            },
+            "FCF Yield": {
+                "valid": fcf_yield > 5,
+                "threshold": "> 5%",
+                "value": f"{fcf_yield:.1f}%"
+            },
+            "RSI": {
+                "valid": 40 < rsi < 55,
+                "threshold": "40-55",
+                "value": f"{rsi:.1f}"
+            }
         }
 
-        valid_count = sum(1 for valid, _ in results.values() if valid)
+        valid_count = sum(1 for data in results.values() if data["valid"])
 
         return {
             "ticker": ticker,
@@ -165,28 +207,43 @@ def get_nasdaq_tickers():
     except:
         return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
 
-# --- Génération Excel simplifiée ---
+# --- Génération Excel avec valeurs ---
 def generate_excel(analysis):
-    df = pd.DataFrame({
-        "Critère": [k for k in analysis['results'].keys()],
-        "Statut": ["✅ Valide" if v[0] else "❌ Invalide" for v in analysis['results'].values()],
-        "Seuil": [v[1] for v in analysis['results'].values()],
-        "Valeur": [
-            f"{analysis['current_price']:.2f}" if k == "Prix actuel" else
-            f"{analysis['market_cap']:,.0f}" if k == "Capitalisation" else
-            f"{analysis['fcf_yield']:.2f}%" if k == "FCF Yield" else
-            f"{analysis['rsi']:.1f}" if k == "RSI" else
-            "N/A" for k in analysis['results'].keys()
-        ]
-    })
+    data = []
+    for criterion, result in analysis['results'].items():
+        data.append([
+            criterion,
+            "✅ Valide" if result["valid"] else "❌ Invalide",
+            result["threshold"],
+            result["value"]
+        ])
+
+    df = pd.DataFrame(data, columns=["Critère", "Statut", "Seuil", "Valeur"])
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Analyse')
         worksheet = writer.sheets['Analyse']
 
-        # Mise en forme basique
+        # Mise en forme
+        format_header = writer.book.add_format({
+            'bold': True,
+            'text_align': 'center',
+            'fg_color': '#4f81bd',
+            'font_color': 'white'
+        })
+
+        format_valid = writer.book.add_format({'bg_color': '#d5e8d4'})
+        format_invalid = writer.book.add_format({'bg_color': '#f8cbad'})
+
         worksheet.set_column('A:D', 20)
+        worksheet.write('A1:D1', df.columns, format_header)
+
+        for i, (_, row) in enumerate(df.iterrows(), start=1):
+            if row["Statut"] == "✅ Valide":
+                worksheet.set_row(i, None, format_valid)
+            else:
+                worksheet.set_row(i, None, format_invalid)
 
     output.seek(0)
     return output
@@ -197,7 +254,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale selon vos critères stricts</div>
+        <div style="color:#9ca3af">Analyse fondamentale avec valeurs détaillées</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -225,23 +282,23 @@ with tab_analyse:
 
                 st.markdown(f"""
                 ### {analysis['ticker']} - {analysis['name']}
-                **Prix actuel:** {analysis['current_price']:.2f} |
+                **Prix actuel:** {analysis['current_price']} |
                 **Capitalisation:** {analysis['market_cap']:,.0f} |
                 **FCF Yield:** {analysis['fcf_yield']:.2f}% |
                 **RSI (14j):** {analysis['rsi']:.1f}
                 """)
 
-                # Liste des critères
+                # Liste des critères avec valeurs
                 st.markdown('<div class="criteria-container">', unsafe_allow_html=True)
-                for criterion, (valid, threshold) in analysis['results'].items():
-                    status = "✅ Valide" if valid else "❌ Invalide"
-                    css_class = "valid" if valid else "invalid"
+                for criterion, result in analysis['results'].items():
+                    status = "✅ Valide" if result["valid"] else "❌ Invalide"
+                    css_class = "valid" if result["valid"] else "invalid"
                     st.markdown(f"""
                     <div class="criterion {css_class}">
                         <span>{criterion}</span>
-                        <div>
+                        <div class="status-container">
                             <span class="status {css_class}">{status}</span>
-                            <span style="color:#9ca3af;font-size:12px;margin-left:10px">{threshold}</span>
+                            <span class="value">{result["value"]} ({result["threshold"]})</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
