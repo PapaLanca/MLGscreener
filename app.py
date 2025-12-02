@@ -5,7 +5,7 @@ import numpy as np
 import requests
 import io
 import csv
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 # --- Configuration ---
 st.set_page_config(
@@ -42,7 +42,11 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .score-number {font-size:32px;font-weight:700;color:var(--valid);}
 
 .criteria-container {margin:20px 0;}
-.criterion {display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--dark-card);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;}
+.criterion {
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px;background:var(--dark-card);border-radius:6px;
+    border:1px solid var(--border);margin-bottom:8px;
+}
 .criterion.valid {border-left:4px solid var(--valid);}
 .criterion.invalid {border-left:4px solid var(--invalid);}
 .status-container {display:flex;flex-direction:column;align-items:flex-end;}
@@ -63,6 +67,11 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .plan-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
 .export-buttons {display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
 .export-button {background:var(--primary);color:white;padding:8px 16px;border:none;border-radius:4px;text-decoration:none;}
+
+.news-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
+.news-item {border-bottom:1px solid var(--border);padding:15px 0;}
+.news-title {color:var(--text);font-weight:600;margin-bottom:5px;}
+.news-source {color:#9ca3af;font-size:12px;}
 .footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
 
 .stTextInput>div>div>input, .stTextArea>div>textarea, .stSelectbox>div>div>select {
@@ -99,6 +108,29 @@ def calculate_rsi(prices, period=14):
         rs = up/down
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
+
+# --- Récupération des news via NewsAPI ---
+def get_financial_news(ticker, api_key=None, max_results=5):
+    if not api_key:
+        # Clé API par défaut (à remplacer par votre propre clé en production)
+        api_key = "DEMO_KEY"  # Remplacez par votre clé NewsAPI
+
+    try:
+        url = f"https://newsapi.org/v2/everything?q={ticker}&sortBy=publishedAt&language=fr&apiKey={api_key}"
+        response = requests.get(url)
+        data = response.json()
+
+        if data['status'] == 'ok':
+            articles = data['articles'][:max_results]
+            return [{
+                'title': article['title'],
+                'source': article['source']['name'],
+                'url': article['url'],
+                'publishedAt': article['publishedAt']
+            } for article in articles]
+        return []
+    except:
+        return []
 
 # --- Analyse complète avec valeurs ---
 def analyze_stock(ticker):
@@ -204,7 +236,7 @@ def get_nasdaq_tickers():
     except:
         return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
 
-# --- Génération CSV (remplace Excel) ---
+# --- Génération CSV ---
 def generate_csv(analysis):
     output = io.StringIO()
     writer = csv.writer(output)
@@ -229,7 +261,7 @@ st.markdown("""
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
     <div>
         <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale avec valeurs détaillées</div>
+        <div style="color:#9ca3af">Analyse fondamentale avec actualités financières</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -239,6 +271,7 @@ tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier 
 
 with tab_analyse:
     ticker = st.text_input("Entrez un ticker (ex: GMED, AAPL, MSFT)", "GMED").upper()
+    news_api_key = st.text_input("Clé API NewsAPI (optionnelle)", type="password")
 
     if st.button("Analyser"):
         if ticker:
@@ -277,6 +310,26 @@ with tab_analyse:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
+
+                # Section NewsAPI
+                st.markdown('<div class="news-section">', unsafe_allow_html=True)
+                st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
+
+                news = get_financial_news(ticker, news_api_key)
+                if news:
+                    for article in news:
+                        st.markdown(f"""
+                        <div class="news-item">
+                            <div class="news-title">{article['title']}</div>
+                            <div class="news-source">
+                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M')}
+                                <a href="{article['url']}" target="_blank" style="color:var(--primary);">Lire →</a>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée</div>", unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
 
                 # Critères GuruFocus
                 st.markdown("""
@@ -330,5 +383,6 @@ st.markdown("""
 <div class="footer">
     <p><strong>EURL MLG Courtage</strong> - Courtier en assurances</p>
     <p>Outil développé selon la méthodologie décrite dans "Mon Screener.pdf"</p>
+    <p>Actualités financières fournies par <a href="https://newsapi.org" style="color:var(--primary);">NewsAPI</a></p>
 </div>
 """, unsafe_allow_html=True)
