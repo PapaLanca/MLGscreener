@@ -1,6 +1,5 @@
 import streamlit as st
 import yfinance as yf
-from datetime import datetime
 
 # --- Configuration de la page ---
 st.set_page_config(
@@ -10,7 +9,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS pour un design clair et professionnel ---
+# --- CSS complet pour un design clair et professionnel ---
 st.markdown(
     """
     <style>
@@ -24,6 +23,7 @@ st.markdown(
         --border-color: #e5e7eb;
     }
 
+    /* Fond général */
     body, [data-testid="stAppViewContainer"] {
         background-color: var(--light-color) !important;
         color: var(--text-color) !important;
@@ -34,6 +34,7 @@ st.markdown(
         background-color: rgba(0, 0, 0, 0) !important;
     }
 
+    /* Bandeau */
     .banner {
         background-color: var(--light-color);
         padding: 20px;
@@ -58,6 +59,7 @@ st.markdown(
         font-weight: 600;
     }
 
+    /* Boutons de navigation */
     .nav-buttons {
         display: flex;
         gap: 20px;
@@ -81,6 +83,7 @@ st.markdown(
         background-color: var(--secondary-color);
     }
 
+    /* Sections de contenu */
     .content-section {
         background-color: var(--light-color);
         padding: 30px;
@@ -89,6 +92,7 @@ st.markdown(
         margin-bottom: 30px;
     }
 
+    /* Pied de page */
     .footer {
         background-color: var(--light-color);
         padding: 20px;
@@ -108,6 +112,7 @@ st.markdown(
         text-decoration: underline;
     }
 
+    /* Titres */
     h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
         color: var(--primary-color) !important;
     }
@@ -116,27 +121,69 @@ st.markdown(
         color: var(--text-color) !important;
     }
 
-    .stButton>button {
-        background-color: var(--primary-color) !important;
-        color: white !important;
-        border-radius: 6px !important;
-        border: none !important;
+    /* Champs de saisie */
+    .stTextInput>div {
+        background-color: white !important;
     }
 
     .stTextInput>div>div>input {
+        background-color: white !important;
+        color: var(--text-color) !important;
         border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+    }
+
+    .stTextInput>label {
         color: var(--text-color) !important;
     }
 
-    a:not(.nav-button) {
-        color: var(--primary-color) !important;
+    /* Zones de texte multi-lignes */
+    .stTextArea>div {
+        background-color: white !important;
     }
 
+    .stTextArea>div>textarea {
+        background-color: white !important;
+        color: var(--text-color) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+    }
+
+    .stTextArea>label {
+        color: var(--text-color) !important;
+    }
+
+    /* Boutons Streamlit */
+    .stButton>button {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border-radius: 4px !important;
+        border: none !important;
+    }
+
+    /* Sélecteurs */
+    .stSelectbox>div {
+        background-color: white !important;
+    }
+
+    .stSelectbox>div>div {
+        background-color: white !important;
+        color: var(--text-color) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+    }
+
+    /* Sections avec titre */
     .section-title {
         color: var(--primary-color);
         border-bottom: 1px solid var(--border-color);
         padding-bottom: 10px;
         margin-bottom: 20px;
+    }
+
+    /* Liens */
+    a:not(.nav-button) {
+        color: var(--primary-color) !important;
     }
     </style>
     """,
