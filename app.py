@@ -54,7 +54,7 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .criterion.invalid {border-left:4px solid var(--invalid);}
 .status-container {display:flex;flex-direction:column;align-items:flex-end;}
 .status {font-weight:600;}
-.status.valid {color:var(--valid;}
+.status.valid {color:var(--valid);}
 .status.invalid {color:var(--invalid);}
 .value {font-size:12px;color:#9ca3af;margin-top:2px;}
 
@@ -75,7 +75,6 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
 .news-item {border-bottom:1px solid var(--border);padding:15px 0;}
 .news-title {color:var(--text);font-weight:600;margin-bottom:5px;}
 .news-source {color:#9ca3af;font-size:12px;}
-.footer {margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;}
 
 .institutional-holders {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
 .holder-item {display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
@@ -103,7 +102,7 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI (améliorée) ---
+# --- Récupération des news via NewsAPI ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
     try:
@@ -430,11 +429,10 @@ with tab_planification:
         st.success(f"✅ Analyse complète programmée pour {len(tickers)} entreprises NASDAQ "
                   f"toutes les {frequency.lower()} à partir du {start_date.strftime('%d/%m/%Y')} à 22h00")
 
-# --- Pied de page ---
+# --- Pied de page EXACTEMENT comme demandé ---
 st.markdown("""
 <div class="footer">
     <p><strong>EURL MLG Courtage</strong> - Courtier en assurances</p>
     <p>Outil développé selon la méthodologie décrite dans "Mon Screener.pdf"</p>
-    <p>Données institutionnelles et actualités financières en temps réel</p>
 </div>
 """, unsafe_allow_html=True)
