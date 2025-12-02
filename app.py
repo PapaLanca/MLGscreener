@@ -1,5 +1,7 @@
 import streamlit as st
-import base64
+from PIL import Image
+import requests
+from io import BytesIO
 
 # --- Configuration de la page ---
 st.set_page_config(
@@ -81,18 +83,6 @@ st.markdown(
         overflow: hidden;
     }
 
-    .content-section::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: url('https://i.imgur.com/V0002.jpg') no-repeat center center;
-        background-size: cover;
-        opacity: 0.1;
-    }
-
     .content-text {
         position: relative;
         z-index: 1;
@@ -120,6 +110,53 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Logo en base64 ---
-logo_base64 = """
-iVBORw0KGgoAAAANSUhEUgAAASwAAACoCAMAAABt9SM9AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyhpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMTExIDc5LjE2Njc5NywgMjAxNi8wOC8yMC0xMDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTcgKE1hY2ludG9zaCkiIHhtcDpDcmVhdG9yRGF0ZT0iMjAxNy0wMy0yMVAxMDoyMTo1MloiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6QjVEMkM5Qjg1M0UxMTFFMTk3RTk1M0IyMzQyMzZBQTAiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6QjVEMkM5Qjk1M0UxMTFFMTk3RTk1M0IyMzZBQTAiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpCNUQyQzlCOUQzRTExMUUxOTdFOUUzQjIzRDIzNkFBQyIvPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpCNUQyQzlCOTUzRTExMUUxOTdFOUUzQjIzRDIzNkFBQyIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/Pv/oZ1JAAAAYdEVYdENvdW50AAAAAQAAE0ZJTgAORklNA+0AAABUSURBVHja7d1NSsNAFIah93sDYWGYmW2QdqK0U7VopdBKFoqEoqFQq9VqKRdN0jZqo9FoNKirKysrKytrq9Vq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9Xq9
+# --- Fonction pour afficher le logo ---
+def display_logo():
+    logo_url = "https://raw.githubusercontent.com/PapaLanca/MLGscreener/main/logo_mlg_courtage.webp"
+    st.markdown(
+        f"""
+        <div class="banner">
+            <img class="logo" src="{logo_url}">
+            <div class="banner-text">MLG Courtage vous propose MLG Screener pour vous aider à trouver des opportunités et générer un revenu complémentaire</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# --- Fonction principale ---
+def main():
+    display_logo()
+
+    st.markdown(
+        """
+        <div class="nav-buttons">
+            <a class="nav-button" href="#analyse">Analyser une entreprise</a>
+            <a class="nav-button" href="#planification">Planifier une analyse</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="content-section" id="analyse">', unsafe_allow_html=True)
+    st.markdown('<div class="content-text">', unsafe_allow_html=True)
+    st.header("À propos de MLG Screener")
+    st.write("""
+    MLG Screener est un outil conçu pour vous aider à identifier des opportunités d'investissement.
+    Notre objectif est de vous fournir des analyses techniques et fondamentales pour vous aider à prendre des décisions éclairées.
+    """)
+    st.markdown('</div></div>', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="footer">
+            <p>EURL MLG Courtage - votre courtier en assurances</p>
+            <p>SIRET : 98324762800016 | ORIAS : 24002055</p>
+            <p>12 La Garnaudière, 44310 La Limouzinière</p>
+            <p><a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a></p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+if __name__ == "__main__":
+    main()
