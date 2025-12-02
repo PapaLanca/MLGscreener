@@ -3,14 +3,15 @@ from PIL import Image
 import requests
 from io import BytesIO
 
-# --- Configuration de la page ---
+# --- Configuration de la page (thème clair forcé) ---
 st.set_page_config(
     page_title="MLG Screener",
     page_icon=":chart_with_upwards_trend:",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# --- CSS personnalisé ---
+# --- CSS personnalisé pour un fond blanc ---
 st.markdown(
     """
     <style>
@@ -20,13 +21,22 @@ st.markdown(
         --primary-color: #1e3a8a;
         --secondary-color: #3b82f6;
         --text-color: #1e3a8a;
-        --light-color: #f8fafc;
+        --light-color: #ffffff;
         --border-color: #e2e8f0;
     }
 
     body {
         font-family: 'Montserrat', sans-serif;
-        background-color: var(--light-color);
+        background-color: var(--light-color) !important;
+        color: var(--text-color) !important;
+    }
+
+    [data-testid="stAppViewContainer"] {
+        background-color: var(--light-color) !important;
+    }
+
+    [data-testid="stHeader"] {
+        background-color: rgba(0, 0, 0, 0) !important;
     }
 
     .banner {
@@ -36,6 +46,7 @@ st.markdown(
         align-items: center;
         justify-content: space-between;
         border-bottom: 1px solid var(--border-color);
+        margin-bottom: 20px;
     }
 
     .logo {
@@ -79,13 +90,6 @@ st.markdown(
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         margin: 20px;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .content-text {
-        position: relative;
-        z-index: 1;
     }
 
     .footer {
@@ -95,6 +99,7 @@ st.markdown(
         border-top: 1px solid var(--border-color);
         color: var(--primary-color);
         font-size: 14px;
+        margin-top: 40px;
     }
 
     .footer a {
@@ -104,6 +109,11 @@ st.markdown(
 
     .footer a:hover {
         text-decoration: underline;
+    }
+
+    .stButton>button {
+        background-color: var(--primary-color) !important;
+        color: white !important;
     }
     </style>
     """,
@@ -138,18 +148,17 @@ def main():
     )
 
     st.markdown('<div class="content-section" id="analyse">', unsafe_allow_html=True)
-    st.markdown('<div class="content-text">', unsafe_allow_html=True)
     st.header("À propos de MLG Screener")
     st.write("""
     MLG Screener est un outil conçu pour vous aider à identifier des opportunités d'investissement.
     Notre objectif est de vous fournir des analyses techniques et fondamentales pour vous aider à prendre des décisions éclairées.
     """)
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
         """
         <div class="footer">
-            <p>EURL MLG Courtage - votre courtier en assurances</p>
+            <p><strong>EURL MLG Courtage</strong> - votre courtier en assurances</p>
             <p>SIRET : 98324762800016 | ORIAS : 24002055</p>
             <p>12 La Garnaudière, 44310 La Limouzinière</p>
             <p><a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a></p>
