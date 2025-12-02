@@ -466,9 +466,9 @@ st.markdown("""
 <div class="footer">
     MLG Screener
 
-    Proposé gratuitement par EURL MLG Courtage<br>
-    Courtier en assurances agréé ORIAS n°24002055<br>
-    SIRET : 98324762800016<br>
+    Proposé gratuitement par EURL MLG Courtage
+    Courtier en assurances agréé ORIAS n°24002055
+    SIRET : 98324762800016
     www.mlgcourtage.fr
 
     MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
