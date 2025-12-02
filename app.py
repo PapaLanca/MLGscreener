@@ -1,6 +1,4 @@
 import streamlit as st
-import base64
-from io import BytesIO
 import pandas as pd
 import yfinance as yf
 import requests
@@ -231,7 +229,7 @@ def display_hero_section():
         <div class="hero-section">
             <div class="hero-content">
                 <h1>Découvrez les opportunités d'investissement</h1>
-                <p>Identifiez les pépite et licornes du marché avec nos outils d'analyse avancés.</p>
+                <p>Identifiez les pépites et licornes du marché avec nos outils d'analyse avancés.</p>
             </div>
         </div>
         """,
@@ -247,14 +245,13 @@ def display_footer():
                 <div class="footer-section">
                     <h3>MLG Courtage</h3>
                     <p>EURL MLG Courtage</p>
-                    <p>SIRET : 98324762800013</p>
-                    <p>ORIAS : 12345678</p>
-                    <p>📍 Adresse : [Votre adresse]</p>
+                    <p>SIRET : 98324762800016</p>
+                    <p>ORIAS : 24002055</p>
+                    <p>📍 Adresse : 12 La Garnaudière, 44310 La Limouzinière</p>
                 </div>
                 <div class="footer-section">
-                    <h3>Contact</h3>
-                    <p>📞 Téléphone : 0X XX XX XX XX</p>
-                    <p>✉️ Email : contact@mlgcourtage.fr</p>
+                    <h3>Liens</h3>
+                    <p><a href="https://mlgcourtage.fr" target="_blank">Site Web</a></p>
                 </div>
             </div>
             <div class="disclaimer">
@@ -357,7 +354,7 @@ def main():
                     <li>Des critères fondamentaux stricts</li>
                     <li>Une veille informationnelle en temps réel</li>
                 </ul>
-                <p>Pour en savoir plus, visitez notre site : [mlgcourtage.fr](https://mlgcourtage.fr)</p>
+                <p>Pour en savoir plus, visitez notre site : <a href="https://mlgcourtage.fr" target="_blank">mlgcourtage.fr</a></p>
             </div>
             """,
             unsafe_allow_html=True
