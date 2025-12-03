@@ -5,9 +5,8 @@ import numpy as np
 import requests
 import io
 import csv
-import json
-from datetime import datetime, timedelta
-import feedparser  # Solution de secours
+import feedparser
+from datetime import datetime
 
 # --- Configuration ---
 st.set_page_config(
@@ -18,7 +17,7 @@ st.set_page_config(
 )
 
 # --- Constantes ---
-NEWS_API_AI_KEY = "votre_cle_api_newsapi_ai"  # À remplacer par votre clé réelle
+NEWS_API_AI_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"
 NEWS_API_AI_URL = "https://eventregistry.org/api/v1/article/getArticles"
 
 # --- CSS avec fond sombre ---
@@ -34,11 +33,9 @@ st.markdown("""
     --text: #e2e8f0;
     --border: #475569;
 }
-body {
-    font-family: 'Montserrat', sans-serif;
-    background-color: var(--dark-bg) !important;
-    color: var(--text) !important;
-}
+body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !important; color: var(--text) !important;}
+[data-testid="stAppViewContainer"] {background-color: var(--dark-bg) !important;}
+
 .footer {
     margin-top: 50px;
     padding: 20px;
@@ -71,21 +68,21 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI.ai (solution principale) ---
+# --- Récupération des news via NewsAPI.ai ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
-    company_names = {
+    company_mapping = {
         "AAPL": {"name": "Apple", "keywords": ["Apple", "AAPL", "iPhone", "Tim Cook"]},
-        "MSFT": {"name": "Microsoft", "keywords": ["Microsoft", "MSFT", "Satya Nadella", "Windows"]},
+        "MSFT": {"name": "Microsoft", "keywords": ["Microsoft", "MSFT", "Windows", "Azure"]},
         "GMED": {"name": "Globus Medical", "keywords": ["Globus Medical", "GMED"]},
-        "TSLA": {"name": "Tesla", "keywords": ["Tesla", "TSLA", "Elon Musk"]},
-        "AMZN": {"name": "Amazon", "keywords": ["Amazon", "AMZN", "Jeff Bezos"]}
+        "TSLA": {"name": "Tesla", "keywords": ["Tesla", "TSLA", "Elon Musk", "Model 3"]},
+        "AMZN": {"name": "Amazon", "keywords": ["Amazon", "AMZN", "AWS", "Jeff Bezos"]}
     }
 
-    company = company_names.get(ticker, {"name": ticker, "keywords": [ticker]})
+    company = company_mapping.get(ticker, {"name": ticker, "keywords": [ticker]})
 
     try:
-        # Solution 1: NewsAPI.ai
+        # Requête NewsAPI.ai
         params = {
             "action": "getArticles",
             "keyword": " OR ".join(company["keywords"]),
@@ -95,7 +92,8 @@ def get_financial_news(ticker):
             "articlesSortByAsc": False,
             "apiKey": NEWS_API_AI_KEY,
             "resultType": "articles",
-            "articlesArticleBodyLen": -1
+            "articlesArticleBodyLen": -1,
+            "lang": "eng"  # Anglais pour plus de résultats
         }
 
         response = requests.post(NEWS_API_AI_URL, json=params, timeout=10)
@@ -112,7 +110,7 @@ def get_financial_news(ticker):
     except Exception as e:
         st.warning(f"NewsAPI.ai indisponible: {str(e)}")
 
-    # Solution 2: Yahoo Finance
+    # Solution de secours: Yahoo Finance
     try:
         stock = yf.Ticker(ticker)
         yahoo_news = stock.news
@@ -127,7 +125,7 @@ def get_financial_news(ticker):
     except Exception as e:
         st.warning(f"Yahoo Finance news indisponible: {str(e)}")
 
-    # Solution 3: Flux RSS
+    # Solution de secours: Flux RSS
     try:
         rss_feeds = {
             "AAPL": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"],
@@ -308,7 +306,7 @@ with tab_analyse:
                     st.markdown("""
                     <div style="color:#9ca3af;">
                         Aucune actualité récente trouvée.<br>
-                        Nous utilisons plusieurs sources alternatives (Yahoo Finance, flux RSS) en cas d'indisponibilité des APIs.
+                        Nous utilisons plusieurs sources alternatives en cas d'indisponibilité des APIs.
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -330,4 +328,3 @@ Nous vous recommandons vivement de consulter un conseiller financier indépendan
 © 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
-
