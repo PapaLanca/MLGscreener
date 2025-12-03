@@ -5,6 +5,10 @@ import numpy as np
 import io
 import csv
 from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 # --- Configuration ---
 st.set_page_config(
@@ -31,28 +35,12 @@ body {
     font-family: 'Montserrat', sans-serif;
     background-color: var(--dark-bg) !important;
     color: var(--text) !important;
-    font-size: 15px !important;  /* Police augmentée de +1 */
+    font-size: 15px !important;
 }
 [data-testid="stAppViewContainer"] {background-color: var(--dark-bg) !important;}
-
-.footer {
-    margin-top: 50px;
-    padding: 20px;
-    text-align: center;
-    color: var(--text);
-    font-size: 15px !important;  /* Police augmentée de +1 */
-    line-height: 1.6;
-    border-top: 1px solid var(--border);
-}
-.export-buttons {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-    margin-top: 20px;
-}
-.stButton>button {
-    font-size: 15px !important;  /* Police augmentée de +1 */
-}
+.stButton>button {font-size: 15px !important;}
+.footer {font-size: 15px !important;}
+.export-buttons {display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,15 +92,24 @@ def analyze_stock(ticker):
             fcf_yield = (fcf_per_share / current_price) * 100
 
         results = {
-            "Volume quotidien": {"valid": avg_volume >= 100000, "threshold": "≥ 100k", "value": f"{avg_volume:,.0f}"},
-            "ROE": {"valid": roe >= 10, "threshold": "≥ 10%", "value": f"{roe:.1f}%"},
-            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "threshold": "0-0.8", "value": f"{debt_to_equity:.2f}"},
-            "Ownership institutionnel": {"valid": inst_ownership > 0, "threshold": "> 0%", "value": f"{inst_ownership:.1f}%"},
-            "Beta": {"valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False, "threshold": "0.5-1.5", "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A"},
-            "Croissance BPA": {"valid": eps_growth > 0, "threshold": "> 0%", "value": f"{eps_growth:.1f}%"},
-            "FCF/Action": {"valid": fcf_per_share > 0, "threshold": "> 0", "value": f"{fcf_per_share:.2f}"},
-            "FCF Yield": {"valid": fcf_yield > 5, "threshold": "> 5%", "value": f"{fcf_yield:.1f}%"},
-            "RSI": {"valid": 40 < rsi < 55, "threshold": "40-55", "value": f"{rsi:.1f}"}
+            "Volume quotidien": {"valid": avg_volume >= 100000, "threshold": "≥ 100k", "value": f"{avg_volume:,.0f}",
+                                "description": "Un volume quotidien élevé indique une bonne liquidité, essentielle pour entrer/sortir facilement d'une position."},
+            "ROE": {"valid": roe >= 10, "threshold": "≥ 10%", "value": f"{roe:.1f}%",
+                   "description": "Le ROE (Return on Equity) mesure la rentabilité des capitaux propres. Un ROE ≥ 10% indique une bonne performance."},
+            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "threshold": "0-0.8", "value": f"{debt_to_equity:.2f}",
+                              "description": "Un ratio dettes/capitaux propres ≤ 0.8 montre une entreprise peu endettée, donc moins risquée."},
+            "Ownership institutionnel": {"valid": inst_ownership > 0, "threshold": "> 0%", "value": f"{inst_ownership:.1f}%",
+                                         "description": "La présence d'investisseurs institutionnels est un gage de confiance dans l'entreprise."},
+            "Beta": {"valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False, "threshold": "0.5-1.5", "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A",
+                    "description": "Un beta entre 0.5 et 1.5 indique une volatilité modérée par rapport au marché."},
+            "Croissance BPA": {"valid": eps_growth > 0, "threshold": "> 0%", "value": f"{eps_growth:.1f}%",
+                               "description": "Une croissance du BPA (Bénéfice Par Action) positive montre une entreprise en expansion."},
+            "FCF/Action": {"valid": fcf_per_share > 0, "threshold": "> 0", "value": f"{fcf_per_share:.2f}",
+                          "description": "Un Free Cash Flow par action positif indique que l'entreprise génère des liquidités."},
+            "FCF Yield": {"valid": fcf_yield > 5, "threshold": "> 5%", "value": f"{fcf_yield:.1f}%",
+                         "description": "Un FCF Yield > 5% montre une bonne génération de cash flow par rapport à la capitalisation."},
+            "RSI": {"valid": 40 < rsi < 55, "threshold": "40-55", "value": f"{rsi:.1f}",
+                    "description": "Un RSI entre 40 et 55 indique que le titre n'est ni suracheté ni survendu."}
         }
 
         holders = []
@@ -144,17 +141,93 @@ def analyze_stock(ticker):
     except Exception as e:
         return {"error": f"Erreur: {str(e)}"}
 
+# --- Génération PDF avec explications ---
+def generate_pdf(analysis):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Titre
+    elements.append(Paragraph(f"Rapport d'analyse - {analysis['ticker']} - {analysis['name']}", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    # Score
+    elements.append(Paragraph(f"Score: {analysis['valid_count']}/{analysis['total']}", styles['Heading2']))
+    elements.append(Spacer(1, 12))
+
+    # Métriques principales
+    elements.append(Paragraph(f"Prix actuel: {analysis['current_price']} | Capitalisation: {analysis['market_cap']:,.0f} | FCF Yield: {analysis['fcf_yield']:.2f}% | RSI: {analysis['rsi']:.1f}", styles['Normal']))
+    elements.append(Spacer(1, 12))
+
+    # Tableau des critères avec explications
+    data = [["Critère", "Statut", "Valeur", "Seuil", "Explication"]]
+    for criterion, result in analysis['results'].items():
+        status = "Valide" if result["valid"] else "Invalide"
+        data.append([
+            criterion,
+            status,
+            result["value"],
+            result["threshold"],
+            result["description"]
+        ])
+
+    t = Table(data)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 24))
+
+    # Actionnaires institutionnels
+    if analysis['holders']:
+        elements.append(Paragraph("Principaux actionnaires institutionnels:", styles['Heading3']))
+        holder_data = [["Nom", "Actions", "% Détenu", "Date"]]
+        for holder in analysis['holders']:
+            holder_data.append([
+                holder['name'],
+                f"{holder['shares']:,.0f}",
+                f"{holder['pctHeld']:.1f}%",
+                holder['dateReported']
+            ])
+        holder_table = Table(holder_data)
+        holder_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(holder_table)
+
+    # Lien GuruFocus
+    elements.append(Spacer(1, 24))
+    elements.append(Paragraph("Vérifiez les critères GuruFocus:", styles['Heading3']))
+    elements.append(Paragraph(f"<link color='blue'>{analysis['gf_url']}</link>", styles['Normal']))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
 # --- Génération CSV ---
 def generate_csv(analysis):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Critère", "Statut", "Seuil", "Valeur"])
+    writer.writerow(["Critère", "Statut", "Seuil", "Valeur", "Explication"])
     for criterion, result in analysis['results'].items():
         writer.writerow([
             criterion,
-            "✅ Valide" if result["valid"] else "❌ Invalide",
+            "Valide" if result["valid"] else "Invalide",
             result["threshold"],
-            result["value"]
+            result["value"],
+            result["description"]
         ])
     if 'holders' in analysis and analysis['holders']:
         writer.writerow([])
@@ -228,7 +301,7 @@ with tab_analyse:
                         """, unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                # Section GuruFocus COMPLÈTE avec tous les critères
+                # Section GuruFocus COMPLÈTE
                 st.markdown("""
                 <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
                     <h3 style="color:#f59e0b;margin-top:0;font-size:17px;">⚠️ Critères GuruFocus à vérifier</h3>
@@ -260,13 +333,25 @@ with tab_analyse:
 
                 # Bouton EXPORT sous les critères GuruFocus comme demandé
                 st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
+
+                # Bouton CSV
                 csv = generate_csv(analysis)
                 st.download_button(
                     label="Exporter en CSV",
                     data=csv,
                     file_name=f"analyse_{analysis['ticker']}.csv",
                     mime="text/csv",
-                    key="export_button"
+                    key="export_csv"
+                )
+
+                # Bouton PDF
+                pdf = generate_pdf(analysis)
+                st.download_button(
+                    label="Exporter en PDF",
+                    data=pdf,
+                    file_name=f"analyse_{analysis['ticker']}.pdf",
+                    mime="application/pdf",
+                    key="export_pdf"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
 
