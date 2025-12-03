@@ -5,7 +5,9 @@ import numpy as np
 import requests
 import io
 import csv
-from datetime import datetime, time
+import json
+from datetime import datetime, timedelta
+import feedparser  # Solution de secours
 
 # --- Configuration ---
 st.set_page_config(
@@ -16,99 +18,35 @@ st.set_page_config(
 )
 
 # --- Constantes ---
-NEWS_API_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"
+NEWS_API_AI_KEY = "votre_cle_api_newsapi_ai"  # À remplacer par votre clé réelle
+NEWS_API_AI_URL = "https://eventregistry.org/api/v1/article/getArticles"
 
 # --- CSS avec fond sombre ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
 :root {
     --primary: #4f81bd;
-    --secondary: #3b82f6;
     --valid: #10b981;
     --invalid: #ef4444;
-    --warning: #f59e0b;
     --dark-bg: #1e293b;
     --dark-card: #334155;
     --text: #e2e8f0;
     --border: #475569;
 }
-body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !important; color: var(--text) !important;}
-[data-testid="stAppViewContainer"] {background-color: var(--dark-bg) !important;}
-[data-testid="stHeader"] {background-color: rgba(0, 0, 0, 0) !important;}
-
-.banner {display:flex;align-items:center;gap:20px;margin-bottom:30px;}
-.banner img {width:180px;}
-.title {color:var(--primary);font-size:24px;font-weight:600;}
-
-.score-card {background:var(--dark-card);padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;}
-.score-number {font-size:32px;font-weight:700;color:var(--valid);}
-
-.criteria-container {margin:20px 0;}
-.criterion {
-    display:flex;justify-content:space-between;align-items:center;
-    padding:12px;background:var(--dark-card);border-radius:6px;
-    border:1px solid var(--border);margin-bottom:8px;
+body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: var(--dark-bg) !important;
+    color: var(--text) !important;
 }
-.criterion.valid {border-left:4px solid var(--valid);}
-.criterion.invalid {border-left:4px solid var(--invalid);}
-.status-container {display:flex;flex-direction:column;align-items:flex-end;}
-.status {font-weight:600;}
-.status.valid {color:var(--valid);}
-.status.invalid {color:var(--invalid);}
-.value {font-size:12px;color:#9ca3af;margin-top:2px;}
-
-.gf-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
-.gf-item {display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
-.gf-link {color:var(--primary);text-decoration:none;font-weight:600;}
-.gf-link:hover {text-decoration:underline;}
-.gf-button {background:var(--primary);color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin-top:10px;}
-
-.nav-buttons {display:flex;gap:20px;justify-content:center;margin:20px 0;}
-.nav-button {background:var(--primary);color:white;padding:12px 24px;border:none;border-radius:6px;font-weight:600;text-decoration:none;}
-
-.plan-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
-.export-buttons {display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
-.export-button {background:var(--primary);color:white;padding:8px 16px;border:none;border-radius:4px;text-decoration:none;}
-
-.news-section {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:30px;}
-.news-item {border-bottom:1px solid var(--border);padding:15px 0;}
-.news-title {color:var(--text);font-weight:600;margin-bottom:5px;}
-.news-source {color:#9ca3af;font-size:12px;}
-
-.institutional-holders {background:var(--dark-card);padding:20px;border-radius:8px;margin-top:20px;}
-.holder-item {display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
-
 .footer {
     margin-top: 50px;
     padding: 20px;
     text-align: center;
     color: var(--text);
     font-size: 14px;
+    line-height: 1.6;
     border-top: 1px solid var(--border);
-    line-height: 1.5;
-}
-.footer-title {
-    font-weight: 600;
-    margin-bottom: 15px;
-    color: var(--primary);
-    font-size: 16px;
-}
-.footer-content {
-    margin-bottom: 15px;
-    text-align: center;
-}
-.footer-content a {
-    color: var(--primary);
-    text-decoration: none;
-}
-.footer-content a:hover {
-    text-decoration: underline;
-}
-.copyright {
-    margin-top: 20px;
-    font-size: 12px;
-    color: #9ca3af;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -127,80 +65,107 @@ def calculate_rsi(prices, period=14):
         delta = deltas[i-1]
         upval = delta if delta > 0 else 0
         downval = -delta if delta < 0 else 0
-
         up = (up*(period-1) + upval)/period
         down = (down*(period-1) + downval)/period
         rs = up/down
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI ---
+# --- Récupération des news via NewsAPI.ai (solution principale) ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
+    company_names = {
+        "AAPL": {"name": "Apple", "keywords": ["Apple", "AAPL", "iPhone", "Tim Cook"]},
+        "MSFT": {"name": "Microsoft", "keywords": ["Microsoft", "MSFT", "Satya Nadella", "Windows"]},
+        "GMED": {"name": "Globus Medical", "keywords": ["Globus Medical", "GMED"]},
+        "TSLA": {"name": "Tesla", "keywords": ["Tesla", "TSLA", "Elon Musk"]},
+        "AMZN": {"name": "Amazon", "keywords": ["Amazon", "AMZN", "Jeff Bezos"]}
+    }
+
+    company = company_names.get(ticker, {"name": ticker, "keywords": [ticker]})
+
     try:
-        query = f"{ticker} OR Apple Inc" if ticker == "AAPL" else ticker
-        url = f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&language=fr&pageSize=5&apiKey={NEWS_API_KEY}"
-        response = requests.get(url)
+        # Solution 1: NewsAPI.ai
+        params = {
+            "action": "getArticles",
+            "keyword": " OR ".join(company["keywords"]),
+            "articlesPage": 1,
+            "articlesCount": 5,
+            "articlesSortBy": "date",
+            "articlesSortByAsc": False,
+            "apiKey": NEWS_API_AI_KEY,
+            "resultType": "articles",
+            "articlesArticleBodyLen": -1
+        }
+
+        response = requests.post(NEWS_API_AI_URL, json=params, timeout=10)
         data = response.json()
 
-        if data['status'] == 'ok' and data['totalResults'] > 0:
+        if data.get("articles") and data["articles"].get("results"):
             return [{
-                'title': article['title'],
-                'source': article['source']['name'],
-                'url': article['url'],
-                'publishedAt': article['publishedAt']
-            } for article in data['articles'][:5]]
-        return []
-    except:
-        return []
+                'title': article["title"],
+                'source': article["source"]["title"],
+                'url': article["url"],
+                'publishedAt': article["date"]
+            } for article in data["articles"]["results"][:5]]
 
-# --- Récupération des principaux actionnaires institutionnels ---
-def get_institutional_holders(ticker):
+    except Exception as e:
+        st.warning(f"NewsAPI.ai indisponible: {str(e)}")
+
+    # Solution 2: Yahoo Finance
     try:
         stock = yf.Ticker(ticker)
-        holders = stock.institutional_holders
-        if holders is not None and not holders.empty:
-            top_holders = holders.head(5)
+        yahoo_news = stock.news
+        if yahoo_news:
             return [{
-                'name': row['Holder'],
-                'shares': row['Shares'],
-                'dateReported': row['Date Reported'],
-                'pctHeld': row['% Out']
-            } for _, row in top_holders.iterrows()]
-        return []
-    except:
-        return []
+                'title': item['title'],
+                'source': item.get('publisher', 'Yahoo Finance'),
+                'url': item.get('link', '#'),
+                'publishedAt': datetime.now().isoformat()
+            } for item in yahoo_news[:5]]
 
-# --- Analyse complète avec valeurs corrigées ---
+    except Exception as e:
+        st.warning(f"Yahoo Finance news indisponible: {str(e)}")
+
+    # Solution 3: Flux RSS
+    try:
+        rss_feeds = {
+            "AAPL": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"],
+            "MSFT": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"],
+            "GMED": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=GMED&region=US&lang=en-US"]
+        }
+
+        if ticker in rss_feeds:
+            for feed_url in rss_feeds[ticker]:
+                feed = feedparser.parse(feed_url)
+                if feed.entries:
+                    return [{
+                        'title': entry.title,
+                        'source': feed.feed.title if hasattr(feed.feed, 'title') else 'Source RSS',
+                        'url': entry.link,
+                        'publishedAt': entry.published if hasattr(entry, 'published') else datetime.now().isoformat()
+                    } for entry in feed.entries[:5]]
+
+    except Exception as e:
+        st.warning(f"Flux RSS indisponible: {str(e)}")
+
+    return []
+
+# --- Analyse complète ---
 def analyze_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
         hist = stock.history(period="3mo", interval="1d")
 
-        # Calcul des métriques avec valeurs
+        # Calcul des métriques
         current_price = info.get('currentPrice', 'N/A')
         avg_volume = info.get('averageVolume', 0)
-
-        # ROE avec vérification
-        roe = info.get('returnOnEquity', 0)
-        if roe is not None:
-            roe = roe * 100
-
-        # Debt-to-Equity avec vérification
+        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
         debt_to_equity = info.get('debtToEquity', 0)
-
-        # Ownership institutionnel corrigé
-        inst_ownership = info.get('institutionalOwnership', 0)
-        if inst_ownership is None:
-            holders = get_institutional_holders(ticker)
-            inst_ownership = sum(h['pctHeld'] for h in holders) if holders else 0
-
+        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
         beta = info.get('beta', 'N/A')
-        eps_growth = info.get('earningsQuarterlyGrowth', 0)
-        if eps_growth is not None:
-            eps_growth = eps_growth * 100
-
+        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
         fcf = info.get('freeCashflow', 0)
         shares_outstanding = info.get('sharesOutstanding', 1)
         fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
@@ -213,65 +178,36 @@ def analyze_stock(ticker):
         if current_price and current_price > 0 and fcf_per_share > 0:
             fcf_yield = (fcf_per_share / current_price) * 100
 
-        # Vérification des critères avec valeurs
         results = {
-            "Volume quotidien": {
-                "valid": avg_volume >= 100000,
-                "threshold": "≥ 100k",
-                "value": f"{avg_volume:,.0f}"
-            },
-            "ROE": {
-                "valid": roe >= 10,
-                "threshold": "≥ 10%",
-                "value": f"{roe:.1f}%" if roe is not None else "N/A"
-            },
-            "Debt-to-Equity": {
-                "valid": 0 <= debt_to_equity <= 0.8,
-                "threshold": "0-0.8",
-                "value": f"{debt_to_equity:.2f}"
-            },
-            "Ownership institutionnel": {
-                "valid": inst_ownership > 0,
-                "threshold": "> 0%",
-                "value": f"{inst_ownership:.1f}%"
-            },
-            "Beta": {
-                "valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False,
-                "threshold": "0.5-1.5",
-                "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A"
-            },
-            "Croissance BPA": {
-                "valid": eps_growth > 0,
-                "threshold": "> 0%",
-                "value": f"{eps_growth:.1f}%" if eps_growth is not None else "N/A"
-            },
-            "FCF/Action": {
-                "valid": fcf_per_share > 0,
-                "threshold": "> 0",
-                "value": f"{fcf_per_share:.2f}"
-            },
-            "FCF Yield": {
-                "valid": fcf_yield > 5,
-                "threshold": "> 5%",
-                "value": f"{fcf_yield:.1f}%"
-            },
-            "RSI": {
-                "valid": 40 < rsi < 55,
-                "threshold": "40-55",
-                "value": f"{rsi:.1f}"
-            }
+            "Volume quotidien": {"valid": avg_volume >= 100000, "threshold": "≥ 100k", "value": f"{avg_volume:,.0f}"},
+            "ROE": {"valid": roe >= 10, "threshold": "≥ 10%", "value": f"{roe:.1f}%"},
+            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "threshold": "0-0.8", "value": f"{debt_to_equity:.2f}"},
+            "Ownership institutionnel": {"valid": inst_ownership > 0, "threshold": "> 0%", "value": f"{inst_ownership:.1f}%"},
+            "Beta": {"valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False, "threshold": "0.5-1.5", "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A"},
+            "Croissance BPA": {"valid": eps_growth > 0, "threshold": "> 0%", "value": f"{eps_growth:.1f}%"},
+            "FCF/Action": {"valid": fcf_per_share > 0, "threshold": "> 0", "value": f"{fcf_per_share:.2f}"},
+            "FCF Yield": {"valid": fcf_yield > 5, "threshold": "> 5%", "value": f"{fcf_yield:.1f}%"},
+            "RSI": {"valid": 40 < rsi < 55, "threshold": "40-55", "value": f"{rsi:.1f}"}
         }
 
-        # Récupération des principaux actionnaires
-        holders = get_institutional_holders(ticker)
-
-        valid_count = sum(1 for data in results.values() if data["valid"])
+        holders = []
+        try:
+            holders_data = stock.institutional_holders
+            if holders_data is not None and not holders_data.empty:
+                holders = [{
+                    'name': row['Holder'],
+                    'shares': row['Shares'],
+                    'dateReported': row['Date Reported'],
+                    'pctHeld': row['% Out']
+                } for _, row in holders_data.head(5).iterrows()]
+        except:
+            pass
 
         return {
             "ticker": ticker,
             "name": info.get('longName', ticker),
             "results": results,
-            "valid_count": valid_count,
+            "valid_count": sum(1 for data in results.values() if data["valid"]),
             "total": len(results),
             "current_price": current_price,
             "market_cap": info.get('marketCap', 0),
@@ -283,61 +219,17 @@ def analyze_stock(ticker):
     except Exception as e:
         return {"error": f"Erreur: {str(e)}"}
 
-# --- Récupération des tickers NASDAQ ---
-@st.cache_data
-def get_nasdaq_tickers():
-    try:
-        url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
-        response = requests.get(url)
-        tickers = [line.split('|')[0].strip() for line in response.text.split('\n') if line]
-        return tickers[:100]  # Limité à 100 pour la démo
-    except:
-        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN"]
-
-# --- Génération CSV ---
-def generate_csv(analysis):
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    # Écriture de l'en-tête
-    writer.writerow(["Critère", "Statut", "Seuil", "Valeur"])
-
-    # Écriture des données
-    for criterion, result in analysis['results'].items():
-        writer.writerow([
-            criterion,
-            "✅ Valide" if result["valid"] else "❌ Invalide",
-            result["threshold"],
-            result["value"]
-        ])
-
-    # Ajout des actionnaires institutionnels
-    if 'holders' in analysis and analysis['holders']:
-        writer.writerow([])
-        writer.writerow(["Principaux actionnaires institutionnels"])
-        writer.writerow(["Nom", "Actions", "Date", "% Détenu"])
-        for holder in analysis['holders']:
-            writer.writerow([
-                holder['name'],
-                holder['shares'],
-                holder['dateReported'],
-                f"{holder['pctHeld']:.2f}%"
-            ])
-
-    return output.getvalue().encode('utf-8')
-
 # --- Interface ---
 st.markdown("""
-<div class="banner">
-    <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp">
+<div style="display:flex;align-items:center;gap:20px;margin-bottom:30px;">
+    <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp" width="180px">
     <div>
-        <div class="title">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale complète avec détails institutionnels</div>
+        <div style="color:#4f81bd;font-size:24px;font-weight:600;">MLG Screener Pro</div>
+        <div style="color:#9ca3af">Analyse fondamentale complète</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# --- Onglets ---
 tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
 
 with tab_analyse:
@@ -353,129 +245,89 @@ with tab_analyse:
                 st.error(analysis["error"])
             else:
                 st.markdown(f"""
-                <div class="score-card">
-                    Score: <span class="score-number">{analysis['valid_count']}/{analysis['total']}</span>
-                    <div style="font-size:14px;color:#9ca3af">critères vérifiés</div>
+                <div style="background:#334155;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
+                    Score: <span style="font-size:32px;font-weight:700;color:#10b981;">{analysis['valid_count']}/{analysis['total']}</span>
+                    <div style="font-size:14px;color:#9ca3af;">critères vérifiés</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                st.markdown(f"""
-                ### {analysis['ticker']} - {analysis['name']}
-                **Prix actuel:** {analysis['current_price']} |
-                **Capitalisation:** {analysis['market_cap']:,.0f} |
-                **FCF Yield:** {analysis['fcf_yield']:.2f}% |
-                **RSI (14j):** {analysis['rsi']:.1f}
-                """)
+                st.markdown(f"### {analysis['ticker']} - {analysis['name']}")
+                st.markdown(f"**Prix actuel:** {analysis['current_price']} | **Capitalisation:** {analysis['market_cap']:,.0f} | **FCF Yield:** {analysis['fcf_yield']:.2f}% | **RSI (14j):** {analysis['rsi']:.1f}")
 
-                # Liste des critères avec valeurs
-                st.markdown('<div class="criteria-container">', unsafe_allow_html=True)
                 for criterion, result in analysis['results'].items():
                     status = "✅ Valide" if result["valid"] else "❌ Invalide"
-                    css_class = "valid" if result["valid"] else "invalid"
+                    color = "#10b981" if result["valid"] else "#ef4444"
                     st.markdown(f"""
-                    <div class="criterion {css_class}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#334155;border-radius:6px;border:1px solid #475569;margin-bottom:8px;border-left:4px solid {color};">
                         <span>{criterion}</span>
-                        <div class="status-container">
-                            <span class="status {css_class}">{status}</span>
-                            <span class="value">{result["value"]} ({result["threshold"]})</span>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+                            <span style="font-weight:600;color:{color};">{status}</span>
+                            <span style="font-size:12px;color:#9ca3af;margin-top:2px;">{result["value"]} ({result["threshold"]})</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Section des actionnaires institutionnels
                 if analysis['holders']:
-                    st.markdown('<div class="institutional-holders">', unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:var(--primary);'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
+                    st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:20px;'>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:#4f81bd;margin-top:0;'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
                     for holder in analysis['holders']:
                         st.markdown(f"""
-                        <div class="holder-item">
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #475569;">
                             <span>{holder['name']}</span>
                             <span>{holder['shares']:,.0f} actions ({holder['pctHeld']:.1f}%)</span>
                         </div>
                         """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-                # Critères GuruFocus
                 st.markdown("""
-                <div class="gf-section">
-                    <h3 style="color:var(--warning);margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
-                    <div class="gf-item">
-                        <span>GF Valuation (Significatively/Modestly undervalued)</span>
-                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-                    </div>
-                    <div class="gf-item">
-                        <span>GF Score (≥ 70)</span>
-                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-                    </div>
-                    <div class="gf-item">
-                        <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
-                        <a href="{gf_url}" class="gf-link" target="_blank">Vérifier →</a>
-                    </div>
+                <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
+                    <h3 style="color:#f59e0b;margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
+                """, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
+                    <span>GF Valuation (Significatively/Modestly undervalued)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
                 </div>
-                """.replace("{gf_url}", analysis['gf_url']), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-                # Boutons d'export
-                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
-                csv = generate_csv(analysis)
-                st.download_button(
-                    label="Exporter en CSV",
-                    data=csv,
-                    file_name=f"analyse_{analysis['ticker']}.csv",
-                    mime="text/csv"
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-
-                # Section NewsAPI
-                st.markdown('<div class="news-section">', unsafe_allow_html=True)
-                st.markdown("<h3 style='color:var(--primary);'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
+                st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
+                st.markdown("<h3 style='color:#4f81bd;'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
 
                 if news:
                     for article in news:
                         st.markdown(f"""
-                        <div class="news-item">
-                            <div class="news-title">{article['title']}</div>
-                            <div class="news-source">
-                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M')}
-                                <a href="{article['url']}" target="_blank" style="color:var(--primary);">Lire →</a>
+                        <div style="border-bottom:1px solid #475569;padding:15px 0;">
+                            <div style="color:var(--text);font-weight:600;margin-bottom:5px;">{article['title']}</div>
+                            <div style="color:#9ca3af;font-size:12px;">
+                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M') if 'publishedAt' in article else 'Date inconnue'}
+                                <a href="{article['url']}" style="color:#4f81bd;" target="_blank">Lire →</a>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.markdown("<div style='color:#9ca3af;'>Aucune actualité récente trouvée</div>", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-with tab_planification:
-    st.markdown("<div class='plan-section'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color:var(--primary);'>Planification complète</h2>", unsafe_allow_html=True)
-
-    frequency = st.selectbox(
-        "Fréquence d'analyse",
-        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"]
-    )
-
-    start_date = st.date_input("Date de la première analyse", datetime.now())
-    tickers = get_nasdaq_tickers()
-    st.info(f"{len(tickers)} entreprises NASDAQ seront analysées à {start_date} 22h00")
-
-    if st.button("Lancer l'analyse complète"):
-        st.success(f"✅ Analyse complète programmée pour {len(tickers)} entreprises NASDAQ "
-                  f"toutes les {frequency.lower()} à partir du {start_date.strftime('%d/%m/%Y')} à 22h00")
+                    st.markdown("""
+                    <div style="color:#9ca3af;">
+                        Aucune actualité récente trouvée.<br>
+                        Nous utilisons plusieurs sources alternatives (Yahoo Finance, flux RSS) en cas d'indisponibilité des APIs.
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # --- Pied de page exactement comme demandé ---
 st.markdown("""
-<div class="footer">
-    MLG Screener
+<div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;line-height:1.6;border-top:1px solid var(--border);">
+MLG Screener
 
-    Proposé gratuitement par EURL MLG Courtage
-    Courtier en assurances agréé ORIAS n°24002055
-    SIRET : 98324762800016
-    www.mlgcourtage.fr
+Proposé gratuitement par EURL MLG Courtage
+Courtier en assurances agréé ORIAS n°24002055
+SIRET : 98324762800016
+www.mlgcourtage.fr
 
-    MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
-    Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
-    Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
-    Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
+MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
+Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
 
-    © 2025 EURL MLG Courtage - Tous droits réservés
+© 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
+
