@@ -5,8 +5,7 @@ import numpy as np
 import requests
 import io
 import csv
-import feedparser
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- Configuration ---
 st.set_page_config(
@@ -68,7 +67,7 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI.ai ---
+# --- Récupération des news via NewsAPI.ai uniquement ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
     company_mapping = {
@@ -82,7 +81,6 @@ def get_financial_news(ticker):
     company = company_mapping.get(ticker, {"name": ticker, "keywords": [ticker]})
 
     try:
-        # Requête NewsAPI.ai
         params = {
             "action": "getArticles",
             "keyword": " OR ".join(company["keywords"]),
@@ -93,7 +91,7 @@ def get_financial_news(ticker):
             "apiKey": NEWS_API_AI_KEY,
             "resultType": "articles",
             "articlesArticleBodyLen": -1,
-            "lang": "eng"  # Anglais pour plus de résultats
+            "lang": "eng"
         }
 
         response = requests.post(NEWS_API_AI_URL, json=params, timeout=10)
@@ -108,9 +106,9 @@ def get_financial_news(ticker):
             } for article in data["articles"]["results"][:5]]
 
     except Exception as e:
-        st.warning(f"NewsAPI.ai indisponible: {str(e)}")
+        st.warning(f"Erreur lors de la récupération des actualités: {str(e)}")
 
-    # Solution de secours: Yahoo Finance
+    # Solution de secours: Yahoo Finance uniquement
     try:
         stock = yf.Ticker(ticker)
         yahoo_news = stock.news
@@ -123,29 +121,7 @@ def get_financial_news(ticker):
             } for item in yahoo_news[:5]]
 
     except Exception as e:
-        st.warning(f"Yahoo Finance news indisponible: {str(e)}")
-
-    # Solution de secours: Flux RSS
-    try:
-        rss_feeds = {
-            "AAPL": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"],
-            "MSFT": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"],
-            "GMED": ["https://feeds.finance.yahoo.com/rss/2.0/headline?s=GMED&region=US&lang=en-US"]
-        }
-
-        if ticker in rss_feeds:
-            for feed_url in rss_feeds[ticker]:
-                feed = feedparser.parse(feed_url)
-                if feed.entries:
-                    return [{
-                        'title': entry.title,
-                        'source': feed.feed.title if hasattr(feed.feed, 'title') else 'Source RSS',
-                        'url': entry.link,
-                        'publishedAt': entry.published if hasattr(entry, 'published') else datetime.now().isoformat()
-                    } for entry in feed.entries[:5]]
-
-    except Exception as e:
-        st.warning(f"Flux RSS indisponible: {str(e)}")
+        st.warning(f"Erreur Yahoo Finance: {str(e)}")
 
     return []
 
@@ -216,6 +192,31 @@ def analyze_stock(ticker):
         }
     except Exception as e:
         return {"error": f"Erreur: {str(e)}"}
+
+# --- Génération CSV ---
+def generate_csv(analysis):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Critère", "Statut", "Seuil", "Valeur"])
+    for criterion, result in analysis['results'].items():
+        writer.writerow([
+            criterion,
+            "✅ Valide" if result["valid"] else "❌ Invalide",
+            result["threshold"],
+            result["value"]
+        ])
+    if 'holders' in analysis and analysis['holders']:
+        writer.writerow([])
+        writer.writerow(["Principaux actionnaires institutionnels"])
+        writer.writerow(["Nom", "Actions", "Date", "% Détenu"])
+        for holder in analysis['holders']:
+            writer.writerow([
+                holder['name'],
+                holder['shares'],
+                holder['dateReported'],
+                f"{holder['pctHeld']:.2f}%"
+            ])
+    return output.getvalue().encode('utf-8')
 
 # --- Interface ---
 st.markdown("""
@@ -306,7 +307,7 @@ with tab_analyse:
                     st.markdown("""
                     <div style="color:#9ca3af;">
                         Aucune actualité récente trouvée.<br>
-                        Nous utilisons plusieurs sources alternatives en cas d'indisponibilité des APIs.
+                        Nous utilisons Yahoo Finance comme source alternative.
                     </div>
                     """, unsafe_allow_html=True)
 
