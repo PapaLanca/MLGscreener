@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS avec fond sombre ---
+# --- CSS avec fond sombre et police augmentée ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
@@ -27,7 +27,12 @@ st.markdown("""
     --text: #e2e8f0;
     --border: #475569;
 }
-body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !important; color: var(--text) !important;}
+body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: var(--dark-bg) !important;
+    color: var(--text) !important;
+    font-size: 15px !important;  /* Police augmentée de +1 */
+}
 [data-testid="stAppViewContainer"] {background-color: var(--dark-bg) !important;}
 
 .footer {
@@ -35,7 +40,7 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
     padding: 20px;
     text-align: center;
     color: var(--text);
-    font-size: 14px;
+    font-size: 15px !important;  /* Police augmentée de +1 */
     line-height: 1.6;
     border-top: 1px solid var(--border);
 }
@@ -44,6 +49,9 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
     gap: 10px;
     justify-content: flex-end;
     margin-top: 20px;
+}
+.stButton>button {
+    font-size: 15px !important;  /* Police augmentée de +1 */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -166,8 +174,8 @@ st.markdown("""
 <div style="display:flex;align-items:center;gap:20px;margin-bottom:30px;">
     <img src="https://raw.githubusercontent.com/PapaLanca/MLGscreener/master/logo_mlg_courtage.webp" width="180px">
     <div>
-        <div style="color:#4f81bd;font-size:24px;font-weight:600;">MLG Screener Pro</div>
-        <div style="color:#9ca3af">Analyse fondamentale complète</div>
+        <div style="color:#4f81bd;font-size:25px;font-weight:600;">MLG Screener Pro</div>
+        <div style="color:#9ca3af;font-size:15px;">Analyse fondamentale complète</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -175,9 +183,9 @@ st.markdown("""
 tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
 
 with tab_analyse:
-    ticker = st.text_input("Entrez un ticker (ex: AAPL, MSFT, GMED)", "AAPL").upper()
+    ticker = st.text_input("Entrez un ticker (ex: AAPL, MSFT, GMED)", "AAPL", key="ticker_input")
 
-    if st.button("Analyser"):
+    if st.button("Analyser", key="analyze_button"):
         if ticker:
             with st.spinner("Analyse en cours..."):
                 analysis = analyze_stock(ticker)
@@ -187,8 +195,8 @@ with tab_analyse:
             else:
                 st.markdown(f"""
                 <div style="background:#334155;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
-                    Score: <span style="font-size:32px;font-weight:700;color:#10b981;">{analysis['valid_count']}/{analysis['total']}</span>
-                    <div style="font-size:14px;color:#9ca3af;">critères vérifiés</div>
+                    Score: <span style="font-size:33px;font-weight:700;color:#10b981;">{analysis['valid_count']}/{analysis['total']}</span>
+                    <div style="font-size:15px;color:#9ca3af;">critères vérifiés</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -200,85 +208,87 @@ with tab_analyse:
                     color = "#10b981" if result["valid"] else "#ef4444"
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#334155;border-radius:6px;border:1px solid #475569;margin-bottom:8px;border-left:4px solid {color};">
-                        <span>{criterion}</span>
+                        <span style="font-size:15px;">{criterion}</span>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;">
-                            <span style="font-weight:600;color:{color};">{status}</span>
-                            <span style="font-size:12px;color:#9ca3af;margin-top:2px;">{result["value"]} ({result["threshold"]})</span>
+                            <span style="font-weight:600;color:{color};font-size:15px;">{status}</span>
+                            <span style="font-size:13px;color:#9ca3af;margin-top:2px;">{result["value"]} ({result["threshold"]})</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
 
                 if analysis['holders']:
                     st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:20px;'>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#4f81bd;margin-top:0;'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 style='color:#4f81bd;margin-top:0;font-size:17px;'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
                     for holder in analysis['holders']:
                         st.markdown(f"""
                         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #475569;">
-                            <span>{holder['name']}</span>
-                            <span>{holder['shares']:,.0f} actions ({holder['pctHeld']:.1f}%)</span>
+                            <span style="font-size:15px;">{holder['name']}</span>
+                            <span style="font-size:15px;">{holder['shares']:,.0f} actions ({holder['pctHeld']:.1f}%)</span>
                         </div>
                         """, unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                # Bouton d'export CSV
-                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
-                csv = generate_csv(analysis)
-                st.download_button(
-                    label="Exporter en CSV",
-                    data=csv,
-                    file_name=f"analyse_{analysis['ticker']}.csv",
-                    mime="text/csv"
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-
                 # Section GuruFocus COMPLÈTE avec tous les critères
                 st.markdown("""
                 <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
-                    <h3 style="color:#f59e0b;margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
+                    <h3 style="color:#f59e0b;margin-top:0;font-size:17px;">⚠️ Critères GuruFocus à vérifier</h3>
                 """, unsafe_allow_html=True)
 
                 # GF Valuation
                 st.markdown(f"""
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
-                    <span>GF Valuation (Significatively/Modestly undervalued)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    <span style="font-size:15px;">GF Valuation (Significatively/Modestly undervalued)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
                 </div>
                 """, unsafe_allow_html=True)
 
                 # GF Score
                 st.markdown(f"""
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
-                    <span>GF Score (≥ 70)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    <span style="font-size:15px;">GF Score (≥ 70)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
                 </div>
                 """, unsafe_allow_html=True)
 
                 # Progression GF Value
                 st.markdown(f"""
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
-                    <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    <span style="font-size:15px;">Progression GF Value (FY1 < FY2 ≤ FY3)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
                 </div>
                 """, unsafe_allow_html=True)
 
+                # Bouton EXPORT sous les critères GuruFocus comme demandé
+                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
+                csv = generate_csv(analysis)
+                st.download_button(
+                    label="Exporter en CSV",
+                    data=csv,
+                    file_name=f"analyse_{analysis['ticker']}.csv",
+                    mime="text/csv",
+                    key="export_button"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+
 with tab_planification:
     st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color:#4f81bd;'>Planification complète</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#4f81bd;font-size:17px;'>Planification complète</h2>", unsafe_allow_html=True)
 
     frequency = st.selectbox(
         "Fréquence d'analyse",
-        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"]
+        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"],
+        key="frequency_select"
     )
 
-    start_date = st.date_input("Date de la première analyse", datetime.now())
+    start_date = st.date_input("Date de la première analyse", datetime.now(), key="start_date")
     st.info(f"Analyse programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
 
-    if st.button("Lancer l'analyse complète"):
+    if st.button("Lancer l'analyse complète", key="launch_button"):
         st.success(f"✅ Analyse complète programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
 
 # --- Pied de page exactement comme demandé ---
 st.markdown("""
-<div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;line-height:1.6;border-top:1px solid var(--border);">
+<div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
 MLG Screener
 
 Proposé gratuitement par EURL MLG Courtage
