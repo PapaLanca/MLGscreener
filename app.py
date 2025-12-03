@@ -39,6 +39,12 @@ body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !i
     line-height: 1.6;
     border-top: 1px solid var(--border);
 }
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -214,6 +220,17 @@ with tab_analyse:
                         """, unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
+                # Bouton d'export CSV
+                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
+                csv = generate_csv(analysis)
+                st.download_button(
+                    label="Exporter en CSV",
+                    data=csv,
+                    file_name=f"analyse_{analysis['ticker']}.csv",
+                    mime="text/csv"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+
                 # Section GuruFocus COMPLÈTE avec tous les critères
                 st.markdown("""
                 <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
@@ -264,17 +281,16 @@ st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;line-height:1.6;border-top:1px solid var(--border);">
 MLG Screener
 
-        Proposé gratuitement par EURL MLG Courtage
-        Courtier en assurances agréé ORIAS n°24002055
-        SIRET : 98324762800016
-        www.mlgcourtage.fr
+Proposé gratuitement par EURL MLG Courtage
+Courtier en assurances agréé ORIAS n°24002055
+SIRET : 98324762800016
+www.mlgcourtage.fr
 
-        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
-        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
-        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
-        Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
+MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
+Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
 
-        © 2025 EURL MLG Courtage - Tous droits réservés
+© 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
-
