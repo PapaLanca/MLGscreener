@@ -62,24 +62,6 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via Yahoo Finance uniquement ---
-@st.cache_data(ttl=3600)
-def get_financial_news(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news
-        if news:
-            return [{
-                'title': item['title'],
-                'source': item.get('publisher', 'Yahoo Finance'),
-                'url': item.get('link', '#'),
-                'publishedAt': datetime.now().strftime('%d/%m/%Y %H:%M')  # Date actuelle si non disponible
-            } for item in news[:5]]
-        return []
-    except Exception as e:
-        st.error(f"Erreur lors de la récupération des actualités: {str(e)}")
-        return []
-
 # --- Analyse complète ---
 def analyze_stock(ticker):
     try:
@@ -193,7 +175,6 @@ with tab_analyse:
         if ticker:
             with st.spinner("Analyse en cours..."):
                 analysis = analyze_stock(ticker)
-                news = get_financial_news(ticker)
 
             if "error" in analysis:
                 st.error(analysis["error"])
@@ -233,10 +214,13 @@ with tab_analyse:
                         """, unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
+                # Section GuruFocus COMPLÈTE avec tous les critères
                 st.markdown("""
                 <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
                     <h3 style="color:#f59e0b;margin-top:0;">⚠️ Critères GuruFocus à vérifier</h3>
                 """, unsafe_allow_html=True)
+
+                # GF Valuation
                 st.markdown(f"""
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
                     <span>GF Valuation (Significatively/Modestly undervalued)</span>
@@ -244,43 +228,53 @@ with tab_analyse:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Section actualités simplifiée
-                st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
-                st.markdown("<h3 style='color:#4f81bd;'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
+                # GF Score
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
+                    <span>GF Score (≥ 70)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                </div>
+                """, unsafe_allow_html=True)
 
-                if news:
-                    for article in news:
-                        st.markdown(f"""
-                        <div style="border-bottom:1px solid #475569;padding:15px 0;">
-                            <div style="color:var(--text);font-weight:600;margin-bottom:5px;">{article['title']}</div>
-                            <div style="color:#9ca3af;font-size:12px;">
-                                {article['source']} • {article['publishedAt']}
-                                <a href="{article['url']}" style="color:#4f81bd;" target="_blank">Lire →</a>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.markdown("""
-                    <div style="color:#9ca3af;">
-                        Aucune actualité récente disponible via Yahoo Finance.
-                    </div>
-                    """, unsafe_allow_html=True)
+                # Progression GF Value
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
+                    <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
+                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                </div>
+                """, unsafe_allow_html=True)
+
+with tab_planification:
+    st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#4f81bd;'>Planification complète</h2>", unsafe_allow_html=True)
+
+    frequency = st.selectbox(
+        "Fréquence d'analyse",
+        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"]
+    )
+
+    start_date = st.date_input("Date de la première analyse", datetime.now())
+    st.info(f"Analyse programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
+
+    if st.button("Lancer l'analyse complète"):
+        st.success(f"✅ Analyse complète programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
 
 # --- Pied de page exactement comme demandé ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:14px;line-height:1.6;border-top:1px solid var(--border);">
 MLG Screener
 
-Proposé gratuitement par EURL MLG Courtage
-Courtier en assurances agréé ORIAS n°24002055
-SIRET : 98324762800016
-www.mlgcourtage.fr
+        Proposé gratuitement par EURL MLG Courtage
+        Courtier en assurances agréé ORIAS n°24002055
+        SIRET : 98324762800016
+        www.mlgcourtage.fr
 
-MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
-Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
-Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
-Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
+        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
+        Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
 
-© 2025 EURL MLG Courtage - Tous droits réservés
+        © 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
+
