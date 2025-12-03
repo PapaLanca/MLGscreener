@@ -2,10 +2,9 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 import io
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- Configuration ---
 st.set_page_config(
@@ -14,10 +13,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
-# --- Constantes ---
-NEWS_API_AI_KEY = "51aa6af9-be5d-4f40-a853-bea7c8c6e5f0"
-NEWS_API_AI_URL = "https://eventregistry.org/api/v1/article/getArticles"
 
 # --- CSS avec fond sombre ---
 st.markdown("""
@@ -67,63 +62,23 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Récupération des news via NewsAPI.ai uniquement ---
+# --- Récupération des news via Yahoo Finance uniquement ---
 @st.cache_data(ttl=3600)
 def get_financial_news(ticker):
-    company_mapping = {
-        "AAPL": {"name": "Apple", "keywords": ["Apple", "AAPL", "iPhone", "Tim Cook"]},
-        "MSFT": {"name": "Microsoft", "keywords": ["Microsoft", "MSFT", "Windows", "Azure"]},
-        "GMED": {"name": "Globus Medical", "keywords": ["Globus Medical", "GMED"]},
-        "TSLA": {"name": "Tesla", "keywords": ["Tesla", "TSLA", "Elon Musk", "Model 3"]},
-        "AMZN": {"name": "Amazon", "keywords": ["Amazon", "AMZN", "AWS", "Jeff Bezos"]}
-    }
-
-    company = company_mapping.get(ticker, {"name": ticker, "keywords": [ticker]})
-
-    try:
-        params = {
-            "action": "getArticles",
-            "keyword": " OR ".join(company["keywords"]),
-            "articlesPage": 1,
-            "articlesCount": 5,
-            "articlesSortBy": "date",
-            "articlesSortByAsc": False,
-            "apiKey": NEWS_API_AI_KEY,
-            "resultType": "articles",
-            "articlesArticleBodyLen": -1,
-            "lang": "eng"
-        }
-
-        response = requests.post(NEWS_API_AI_URL, json=params, timeout=10)
-        data = response.json()
-
-        if data.get("articles") and data["articles"].get("results"):
-            return [{
-                'title': article["title"],
-                'source': article["source"]["title"],
-                'url': article["url"],
-                'publishedAt': article["date"]
-            } for article in data["articles"]["results"][:5]]
-
-    except Exception as e:
-        st.warning(f"Erreur lors de la récupération des actualités: {str(e)}")
-
-    # Solution de secours: Yahoo Finance uniquement
     try:
         stock = yf.Ticker(ticker)
-        yahoo_news = stock.news
-        if yahoo_news:
+        news = stock.news
+        if news:
             return [{
                 'title': item['title'],
                 'source': item.get('publisher', 'Yahoo Finance'),
                 'url': item.get('link', '#'),
-                'publishedAt': datetime.now().isoformat()
-            } for item in yahoo_news[:5]]
-
+                'publishedAt': datetime.now().strftime('%d/%m/%Y %H:%M')  # Date actuelle si non disponible
+            } for item in news[:5]]
+        return []
     except Exception as e:
-        st.warning(f"Erreur Yahoo Finance: {str(e)}")
-
-    return []
+        st.error(f"Erreur lors de la récupération des actualités: {str(e)}")
+        return []
 
 # --- Analyse complète ---
 def analyze_stock(ticker):
@@ -289,6 +244,7 @@ with tab_analyse:
                 </div>
                 """, unsafe_allow_html=True)
 
+                # Section actualités simplifiée
                 st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
                 st.markdown("<h3 style='color:#4f81bd;'>📰 Actualités financières récentes</h3>", unsafe_allow_html=True)
 
@@ -298,7 +254,7 @@ with tab_analyse:
                         <div style="border-bottom:1px solid #475569;padding:15px 0;">
                             <div style="color:var(--text);font-weight:600;margin-bottom:5px;">{article['title']}</div>
                             <div style="color:#9ca3af;font-size:12px;">
-                                {article['source']} • {datetime.strptime(article['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%d/%m/%Y %H:%M') if 'publishedAt' in article else 'Date inconnue'}
+                                {article['source']} • {article['publishedAt']}
                                 <a href="{article['url']}" style="color:#4f81bd;" target="_blank">Lire →</a>
                             </div>
                         </div>
@@ -306,8 +262,7 @@ with tab_analyse:
                 else:
                     st.markdown("""
                     <div style="color:#9ca3af;">
-                        Aucune actualité récente trouvée.<br>
-                        Nous utilisons Yahoo Finance comme source alternative.
+                        Aucune actualité récente disponible via Yahoo Finance.
                     </div>
                     """, unsafe_allow_html=True)
 
