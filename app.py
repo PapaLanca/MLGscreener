@@ -4,6 +4,9 @@ import pandas as pd
 import numpy as np
 import io
 import csv
+import time
+import json
+import os
 from datetime import datetime
 
 # --- Configuration ---
@@ -14,7 +17,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS avec fond sombre et police augmentée ---
+# --- Constantes ---
+DAILY_LIMIT = 500  # Limite quotidienne Alpha Vantage
+CACHE_FILE = "analysis_progress.json"
+RESULTS_FILE = "screener_results.csv"
+
+# --- CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
@@ -27,26 +35,103 @@ st.markdown("""
     --text: #e2e8f0;
     --border: #475569;
 }
-body {
-    font-family: 'Montserrat', sans-serif;
-    background-color: var(--dark-bg) !important;
-    color: var(--text) !important;
-    font-size: 15px !important;
-}
-[data-testid="stAppViewContainer"] {background-color: var(--dark-bg) !important;}
-.stButton>button {font-size: 15px !important;}
-.footer {font-size: 15px !important;}
-.export-buttons {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-    margin-top: 20px;
-}
+body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !important; color: var(--text) !important; font-size: 15px !important;}
+.progress-container {margin: 20px 0; background: #334155; padding: 20px; border-radius: 8px;}
+.progress-bar {height: 20px; background: #475569; border-radius: 10px; margin: 10px 0;}
+.progress {height: 100%; background: #4f81bd; border-radius: 10px; width: 0%; transition: width 0.3s;}
 </style>
 """, unsafe_allow_html=True)
 
+# --- Gestion de la progression ---
+def load_progress():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, 'r') as f:
+            return json.load(f)
+    return {
+        "completed": [],
+        "current_day": datetime.now().strftime("%Y-%m-%d"),
+        "last_index": 0,
+        "results": []
+    }
+
+def save_progress(progress):
+    with open(CACHE_FILE, 'w') as f:
+        json.dump(progress, f)
+
+def reset_if_new_day(progress):
+    today = datetime.now().strftime("%Y-%m-%d")
+    if progress["current_day"] != today:
+        progress["completed"] = []
+        progress["last_index"] = 0
+        progress["current_day"] = today
+        save_progress(progress)
+    return progress
+
+# --- Analyse d'un ticker ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def analyze_ticker(ticker):
+    try:
+        time.sleep(2)  # Délai pour respecter les limites
+
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="3mo", interval="1d")
+
+        # Calcul des métriques
+        current_price = info.get('currentPrice', 0)
+        avg_volume = info.get('averageVolume', 0)
+        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
+        debt_to_equity = info.get('debtToEquity', 0)
+        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
+        beta = info.get('beta', 1)
+        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
+        fcf = info.get('freeCashflow', 0)
+        shares_outstanding = info.get('sharesOutstanding', 1)
+        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
+
+        # Calcul RSI
+        rsi = 50
+        if not hist.empty and 'Close' in hist:
+            deltas = np.diff(hist['Close'].values)
+            if len(deltas) > 0:
+                rsi = calculate_rsi(hist['Close'].values)
+
+        # Calcul FCF Yield
+        fcf_yield = 0
+        if current_price > 0 and fcf_per_share > 0:
+            fcf_yield = (fcf_per_share / current_price) * 100
+
+        # Évaluation des critères
+        results = {
+            "Volume quotidien": avg_volume >= 100000,
+            "ROE": roe >= 10,
+            "Debt-to-Equity": 0 <= debt_to_equity <= 0.8,
+            "Ownership institutionnel": inst_ownership > 0,
+            "Beta": 0.5 < beta < 1.5,
+            "Croissance BPA": eps_growth > 0,
+            "FCF/Action": fcf_per_share > 0,
+            "FCF Yield": fcf_yield > 5,
+            "RSI": 40 < rsi < 55
+        }
+
+        valid_count = sum(1 for v in results.values() if v)
+
+        return {
+            "ticker": ticker,
+            "name": info.get('longName', ticker),
+            "score": f"{valid_count}/9",
+            "valid_count": valid_count,
+            "current_price": current_price,
+            "market_cap": info.get('marketCap', 0),
+            "results": results
+        }
+    except Exception as e:
+        return {"ticker": ticker, "error": str(e)}
+
 # --- Fonction RSI ---
 def calculate_rsi(prices, period=14):
+    if len(prices) < period:
+        return 50
     deltas = np.diff(prices)
     seed = deltas[:period+1]
     up = seed[seed >= 0].sum()/period
@@ -54,7 +139,6 @@ def calculate_rsi(prices, period=14):
     rs = up/down
     rsi = np.zeros_like(prices)
     rsi[:period] = 100. - 100./(1.+rs)
-
     for i in range(period, len(prices)):
         delta = deltas[i-1]
         upval = delta if delta > 0 else 0
@@ -65,144 +149,78 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Analyse complète avec explications ---
-def analyze_stock(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="3mo", interval="1d")
+# --- Analyse complète avec limite quotidienne ---
+def run_bulk_analysis(tickers):
+    progress = reset_if_new_day(load_progress())
+    completed = progress["completed"]
+    results = progress.get("results", [])
+    start_idx = progress["last_index"]
 
-        # Calcul des métriques
-        current_price = info.get('currentPrice', 'N/A')
-        avg_volume = info.get('averageVolume', 0)
-        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-        debt_to_equity = info.get('debtToEquity', 0)
-        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
-        beta = info.get('beta', 'N/A')
-        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
-        fcf = info.get('freeCashflow', 0)
-        shares_outstanding = info.get('sharesOutstanding', 1)
-        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
+    # Vérification de la limite quotidienne
+    if len(completed) >= DAILY_LIMIT:
+        st.warning(f"Limite quotidienne de {DAILY_LIMIT} requêtes atteinte. Reprenez demain.")
+        return results
 
-        # Calcul RSI
-        rsi = calculate_rsi(hist['Close'].values) if not hist.empty and 'Close' in hist else 50
+    # Calcul du nombre de tickers restants pour aujourd'hui
+    remaining = DAILY_LIMIT - len(completed)
+    end_idx = min(start_idx + remaining, len(tickers))
 
-        # Calcul FCF Yield
-        fcf_yield = 0
-        if current_price and current_price > 0 and fcf_per_share > 0:
-            fcf_yield = (fcf_per_share / current_price) * 100
+    st.write(f"Analyse des tickers {start_idx+1} à {end_idx} sur {len(tickers)}...")
 
-        results = {
-            "Volume quotidien": {
-                "valid": avg_volume >= 100000,
-                "threshold": "≥ 100k",
-                "value": f"{avg_volume:,.0f}",
-                "description": "Un volume quotidien élevé indique une bonne liquidité, essentielle pour entrer/sortir facilement d'une position."
-            },
-            "ROE": {
-                "valid": roe >= 10,
-                "threshold": "≥ 10%",
-                "value": f"{roe:.1f}%",
-                "description": "Le ROE (Return on Equity) mesure la rentabilité des capitaux propres. Un ROE ≥ 10% indique une bonne performance."
-            },
-            "Debt-to-Equity": {
-                "valid": 0 <= debt_to_equity <= 0.8,
-                "threshold": "0-0.8",
-                "value": f"{debt_to_equity:.2f}",
-                "description": "Un ratio dettes/capitaux propres ≤ 0.8 montre une entreprise peu endettée, donc moins risquée."
-            },
-            "Ownership institutionnel": {
-                "valid": inst_ownership > 0,
-                "threshold": "> 0%",
-                "value": f"{inst_ownership:.1f}%",
-                "description": "La présence d'investisseurs institutionnels est un gage de confiance dans l'entreprise."
-            },
-            "Beta": {
-                "valid": 0.5 < beta < 1.5 if isinstance(beta, (int, float)) else False,
-                "threshold": "0.5-1.5",
-                "value": f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A",
-                "description": "Un beta entre 0.5 et 1.5 indique une volatilité modérée par rapport au marché."
-            },
-            "Croissance BPA": {
-                "valid": eps_growth > 0,
-                "threshold": "> 0%",
-                "value": f"{eps_growth:.1f}%",
-                "description": "Une croissance du BPA (Bénéfice Par Action) positive montre une entreprise en expansion."
-            },
-            "FCF/Action": {
-                "valid": fcf_per_share > 0,
-                "threshold": "> 0",
-                "value": f"{fcf_per_share:.2f}",
-                "description": "Un Free Cash Flow par action positif indique que l'entreprise génère des liquidités."
-            },
-            "FCF Yield": {
-                "valid": fcf_yield > 5,
-                "threshold": "> 5%",
-                "value": f"{fcf_yield:.1f}%",
-                "description": "Un FCF Yield > 5% montre une bonne génération de cash flow par rapport à la capitalisation."
-            },
-            "RSI": {
-                "valid": 40 < rsi < 55,
-                "threshold": "40-55",
-                "value": f"{rsi:.1f}",
-                "description": "Un RSI entre 40 et 55 indique que le titre n'est ni suracheté ni survendu."
-            }
-        }
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
-        holders = []
-        try:
-            holders_data = stock.institutional_holders
-            if holders_data is not None and not holders_data.empty:
-                holders = [{
-                    'name': row['Holder'],
-                    'shares': row['Shares'],
-                    'dateReported': row['Date Reported'],
-                    'pctHeld': row['% Out']
-                } for _, row in holders_data.head(5).iterrows()]
-        except:
-            pass
+    for i in range(start_idx, end_idx):
+        ticker = tickers[i]
+        status_text.text(f"Analyse de {ticker} ({i+1}/{len(tickers)})...")
+        result = analyze_ticker(ticker)
+        results.append(result)
+        completed.append(ticker)
+        progress["last_index"] = i + 1
+        progress["completed"] = completed
+        progress["results"] = results
+        save_progress(progress)
+        progress_bar.progress((i+1)/len(tickers))
 
-        return {
-            "ticker": ticker,
-            "name": info.get('longName', ticker),
-            "results": results,
-            "valid_count": sum(1 for data in results.values() if data["valid"]),
-            "total": len(results),
-            "current_price": current_price,
-            "market_cap": info.get('marketCap', 0),
-            "fcf_yield": fcf_yield,
-            "rsi": rsi,
-            "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary",
-            "holders": holders
-        }
-    except Exception as e:
-        return {"error": f"Erreur: {str(e)}"}
+    status_text.text(f"Analyse terminée pour aujourd'hui! {len(completed)} tickers analysés.")
+    return results
 
-# --- Génération CSV avec explications ---
-def generate_csv(analysis):
+# --- Génération CSV ---
+def generate_csv(results):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Critère", "Statut", "Seuil", "Valeur", "Explication"])
-    for criterion, result in analysis['results'].items():
-        writer.writerow([
-            criterion,
-            "✅ Valide" if result["valid"] else "❌ Invalide",
-            result["threshold"],
-            result["value"],
-            result["description"]
-        ])
-    if 'holders' in analysis and analysis['holders']:
-        writer.writerow([])
-        writer.writerow(["Principaux actionnaires institutionnels"])
-        writer.writerow(["Nom", "Actions", "Date", "% Détenu"])
-        for holder in analysis['holders']:
-            writer.writerow([
-                holder['name'],
-                holder['shares'],
-                holder['dateReported'],
-                f"{holder['pctHeld']:.2f}%"
-            ])
+    writer.writerow(["Ticker", "Nom", "Score", "Prix", "Capitalisation"] +
+                  [f"Critère: {c}" for c in results[0]["results"].keys()])
+
+    for result in results:
+        if "error" in result:
+            writer.writerow([result["ticker"], "Erreur", "", "", ""] + [""]*len(results[0]["results"]))
+            continue
+
+        row = [
+            result["ticker"],
+            result["name"],
+            result["score"],
+            result["current_price"],
+            result["market_cap"]
+        ]
+
+        for criterion in results[0]["results"].keys():
+            row.append("✅" if result["results"][criterion] else "❌")
+
+        writer.writerow(row)
+
     return output.getvalue().encode('utf-8')
+
+# --- Chargement des tickers NASDAQ ---
+@st.cache_data
+def load_nasdaq_tickers():
+    try:
+        url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
+        df = pd.read_csv(url, sep='|')
+        return df['Symbol'].tolist()
+    except:
+        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN", "GOOGL", "META", "NVDA"]
 
 # --- Interface ---
 st.markdown("""
@@ -215,128 +233,44 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Planifier une analyse complète"])
+tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Analyse complète"])
 
 with tab_analyse:
-    ticker = st.text_input("Entrez un ticker (ex: AAPL, MSFT, GMED)", "AAPL", key="ticker_input")
-
-    if st.button("Analyser", key="analyze_button"):
-        if ticker:
-            with st.spinner("Analyse en cours..."):
-                analysis = analyze_stock(ticker)
-
-            if "error" in analysis:
-                st.error(analysis["error"])
-            else:
-                st.markdown(f"""
-                <div style="background:#334155;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
-                    Score: <span style="font-size:33px;font-weight:700;color:#10b981;">{analysis['valid_count']}/{analysis['total']}</span>
-                    <div style="font-size:15px;color:#9ca3af;">critères vérifiés</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                st.markdown(f"### {analysis['ticker']} - {analysis['name']}")
-                st.markdown(f"**Prix actuel:** {analysis['current_price']} | **Capitalisation:** {analysis['market_cap']:,.0f} | **FCF Yield:** {analysis['fcf_yield']:.2f}% | **RSI (14j):** {analysis['rsi']:.1f}")
-
-                for criterion, result in analysis['results'].items():
-                    status = "✅ Valide" if result["valid"] else "❌ Invalide"
-                    color = "#10b981" if result["valid"] else "#ef4444"
-                    st.markdown(f"""
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#334155;border-radius:6px;border:1px solid #475569;margin-bottom:8px;border-left:4px solid {color};">
-                        <span style="font-size:15px;">{criterion}</span>
-                        <div style="display:flex;flex-direction:column;align-items:flex-end;">
-                            <span style="font-weight:600;color:{color};font-size:15px;">{status}</span>
-                            <span style="font-size:13px;color:#9ca3af;margin-top:2px;">{result["value"]} ({result["threshold"]})</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                if analysis['holders']:
-                    st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:20px;'>", unsafe_allow_html=True)
-                    st.markdown("<h3 style='color:#4f81bd;margin-top:0;font-size:17px;'>🏛️ Principaux actionnaires institutionnels</h3>", unsafe_allow_html=True)
-                    for holder in analysis['holders']:
-                        st.markdown(f"""
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #475569;">
-                            <span style="font-size:15px;">{holder['name']}</span>
-                            <span style="font-size:15px;">{holder['shares']:,.0f} actions ({holder['pctHeld']:.1f}%)</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                # Section GuruFocus COMPLÈTE
-                st.markdown("""
-                <div style="background:#334155;padding:20px;border-radius:8px;margin-top:20px;">
-                    <h3 style="color:#f59e0b;margin-top:0;font-size:17px;">⚠️ Critères GuruFocus à vérifier</h3>
-                """, unsafe_allow_html=True)
-
-                # GF Valuation
-                st.markdown(f"""
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
-                    <span style="font-size:15px;">GF Valuation (Significatively/Modestly undervalued)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # GF Score
-                st.markdown(f"""
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #475569;">
-                    <span style="font-size:15px;">GF Score (≥ 70)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Progression GF Value
-                st.markdown(f"""
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;">
-                    <span style="font-size:15px;">Progression GF Value (FY1 < FY2 ≤ FY3)</span>
-                    <a href="{analysis['gf_url']}" style="color:#4f81bd;text-decoration:none;font-size:15px;" target="_blank">Vérifier →</a>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Bouton EXPORT sous les critères GuruFocus comme demandé
-                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
-                csv = generate_csv(analysis)
-                st.download_button(
-                    label="Exporter en CSV (avec explications)",
-                    data=csv,
-                    file_name=f"analyse_{analysis['ticker']}.csv",
-                    mime="text/csv",
-                    key="export_csv"
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
+    # ... (votre code existant pour l'analyse manuelle)
 
 with tab_planification:
     st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color:#4f81bd;font-size:17px;'>Planification complète</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#4f81bd;font-size:17px;'>Analyse complète des tickers NASDAQ</h2>", unsafe_allow_html=True)
 
-    frequency = st.selectbox(
-        "Fréquence d'analyse",
-        ["Toutes les 4 semaines", "Toutes les 6 semaines", "Toutes les 8 semaines", "Toutes les 12 semaines"],
-        key="frequency_select"
-    )
+    tickers = load_nasdaq_tickers()
+    progress = reset_if_new_day(load_progress())
 
-    start_date = st.date_input("Date de la première analyse", datetime.now(), key="start_date")
-    st.info(f"Analyse programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
+    st.write(f"Progression: {len(progress['completed'])}/{len(tickers)} tickers analysés")
+    st.write(f"Limite quotidienne: {DAILY_LIMIT} requêtes (Alpha Vantage)")
 
-    if st.button("Lancer l'analyse complète", key="launch_button"):
-        st.success(f"✅ Analyse complète programmée pour {start_date.strftime('%d/%m/%Y')} à 22h00")
+    if st.button("Lancer/Reprendre l'analyse"):
+        results = run_bulk_analysis(tickers)
 
-# --- Pied de page exactement comme demandé ---
+        # Filtrer les tickers avec score ≥ 6/9
+        good_results = [r for r in results if "score" in r and int(r["score"].split("/")[0]) >= 6]
+
+        if good_results:
+            csv = generate_csv(good_results)
+            st.download_button(
+                label="Télécharger les résultats (score ≥ 6/9)",
+                data=csv,
+                file_name=f"top_tickers_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+
+            st.markdown("### Tickers avec score ≥ 6/9")
+            for result in good_results:
+                st.write(f"{result['ticker']} - {result['name']} ({result['score']})")
+
+# --- Pied de page ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
-MLG Screener
-
-Proposé gratuitement par EURL MLG Courtage
-Courtier en assurances agréé ORIAS n°24002055
-SIRET : 98324762800016
-www.mlgcourtage.fr
-
-MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
-Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
-Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
-Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
-
-© 2025 EURL MLG Courtage - Tous droits réservés
+MLG Screener - Proposé gratuitement par EURL MLG Courtage
+© 2025 Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
-
