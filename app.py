@@ -20,7 +20,6 @@ st.set_page_config(
 # --- Constantes ---
 DAILY_LIMIT = 500  # Limite quotidienne Alpha Vantage
 CACHE_FILE = "analysis_progress.json"
-RESULTS_FILE = "screener_results.csv"
 
 # --- CSS ---
 st.markdown("""
@@ -35,10 +34,34 @@ st.markdown("""
     --text: #e2e8f0;
     --border: #475569;
 }
-body {font-family: 'Montserrat', sans-serif; background-color: var(--dark-bg) !important; color: var(--text) !important; font-size: 15px !important;}
-.progress-container {margin: 20px 0; background: #334155; padding: 20px; border-radius: 8px;}
-.progress-bar {height: 20px; background: #475569; border-radius: 10px; margin: 10px 0;}
-.progress {height: 100%; background: #4f81bd; border-radius: 10px; width: 0%; transition: width 0.3s;}
+body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: var(--dark-bg) !important;
+    color: var(--text) !important;
+    font-size: 15px !important;
+}
+.stButton>button {
+    font-size: 15px !important;
+}
+.progress-container {
+    margin: 20px 0;
+    background: #334155;
+    padding: 20px;
+    border-radius: 8px;
+}
+.progress-bar {
+    height: 20px;
+    background: #475569;
+    border-radius: 10px;
+    margin: 10px 0;
+}
+.progress {
+    height: 100%;
+    background: #4f81bd;
+    border-radius: 10px;
+    width: 0%;
+    transition: width 0.3s;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,6 +90,28 @@ def reset_if_new_day(progress):
         save_progress(progress)
     return progress
 
+# --- Fonction RSI ---
+def calculate_rsi(prices, period=14):
+    if len(prices) < period:
+        return 50
+    deltas = np.diff(prices)
+    seed = deltas[:period+1]
+    up = seed[seed >= 0].sum()/period
+    down = -seed[seed < 0].sum()/period
+    rs = up/down
+    rsi = np.zeros_like(prices)
+    rsi[:period] = 100. - 100./(1.+rs)
+
+    for i in range(period, len(prices)):
+        delta = deltas[i-1]
+        upval = delta if delta > 0 else 0
+        downval = -delta if delta < 0 else 0
+        up = (up*(period-1) + upval)/period
+        down = (down*(period-1) + downval)/period
+        rs = up/down
+        rsi[i] = 100. - 100./(1.+rs)
+    return rsi[-1]
+
 # --- Analyse d'un ticker ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def analyze_ticker(ticker):
@@ -92,9 +137,7 @@ def analyze_ticker(ticker):
         # Calcul RSI
         rsi = 50
         if not hist.empty and 'Close' in hist:
-            deltas = np.diff(hist['Close'].values)
-            if len(deltas) > 0:
-                rsi = calculate_rsi(hist['Close'].values)
+            rsi = calculate_rsi(hist['Close'].values)
 
         # Calcul FCF Yield
         fcf_yield = 0
@@ -128,27 +171,6 @@ def analyze_ticker(ticker):
     except Exception as e:
         return {"ticker": ticker, "error": str(e)}
 
-# --- Fonction RSI ---
-def calculate_rsi(prices, period=14):
-    if len(prices) < period:
-        return 50
-    deltas = np.diff(prices)
-    seed = deltas[:period+1]
-    up = seed[seed >= 0].sum()/period
-    down = -seed[seed < 0].sum()/period
-    rs = up/down
-    rsi = np.zeros_like(prices)
-    rsi[:period] = 100. - 100./(1.+rs)
-    for i in range(period, len(prices)):
-        delta = deltas[i-1]
-        upval = delta if delta > 0 else 0
-        downval = -delta if delta < 0 else 0
-        up = (up*(period-1) + upval)/period
-        down = (down*(period-1) + downval)/period
-        rs = up/down
-        rsi[i] = 100. - 100./(1.+rs)
-    return rsi[-1]
-
 # --- Analyse complète avec limite quotidienne ---
 def run_bulk_analysis(tickers):
     progress = reset_if_new_day(load_progress())
@@ -165,14 +187,12 @@ def run_bulk_analysis(tickers):
     remaining = DAILY_LIMIT - len(completed)
     end_idx = min(start_idx + remaining, len(tickers))
 
-    st.write(f"Analyse des tickers {start_idx+1} à {end_idx} sur {len(tickers)}...")
-
     progress_bar = st.progress(0)
     status_text = st.empty()
 
     for i in range(start_idx, end_idx):
         ticker = tickers[i]
-        status_text.text(f"Analyse de {ticker} ({i+1}/{len(tickers)})...")
+        status_text.text(f"Analyse de {ticker} ({i+1}/{len(tickers)})... {len(completed)+1}/{DAILY_LIMIT} aujourd'hui")
         result = analyze_ticker(ticker)
         results.append(result)
         completed.append(ticker)
@@ -236,7 +256,34 @@ st.markdown("""
 tab_analyse, tab_planification = st.tabs(["Analyser une entreprise", "Analyse complète"])
 
 with tab_analyse:
-    # ... (votre code existant pour l'analyse manuelle)
+    ticker = st.text_input("Entrez un ticker (ex: AAPL, MSFT, GMED)", "AAPL")
+
+    if st.button("Analyser"):
+        if ticker:
+            with st.spinner("Analyse en cours..."):
+                result = analyze_ticker(ticker.upper())
+
+            if "error" in result:
+                st.error(f"Erreur: {result['error']}")
+            else:
+                st.markdown(f"""
+                <div style="background:#334155;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
+                    Score: <span style="font-size:33px;font-weight:700;color:#10b981;">{result['score']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown(f"### {result['ticker']} - {result['name']}")
+                st.markdown(f"**Prix actuel:** {result['current_price']} | **Capitalisation:** {result['market_cap']:,.0f}")
+
+                for criterion, valid in result["results"].items():
+                    status = "✅ Valide" if valid else "❌ Invalide"
+                    color = "#10b981" if valid else "#ef4444"
+                    st.markdown(f"""
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#334155;border-radius:6px;border:1px solid #475569;margin-bottom:8px;border-left:4px solid {color};">
+                        <span style="font-size:15px;">{criterion}</span>
+                        <span style="font-weight:600;color:{color};font-size:15px;">{status}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 with tab_planification:
     st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
@@ -270,7 +317,13 @@ with tab_planification:
 # --- Pied de page ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
-MLG Screener - Proposé gratuitement par EURL MLG Courtage
-© 2025 Tous droits réservés
+MLG Screener
+
+Proposé gratuitement par EURL MLG Courtage
+Courtier en assurances agréé ORIAS n°24002055
+SIRET : 98324762800016
+www.mlgcourtage.fr
+
+© 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
