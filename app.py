@@ -64,41 +64,43 @@ body {
     gap: 10px;
     font-size: 14px;
 }
-.footer {
-    margin-top: 50px;
+.gf-section {
+    background: var(--dark-card);
     padding: 20px;
-    text-align: center;
-    color: var(--text);
-    font-size: 15px !important;
-    line-height: 1.6;
-    border-top: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 20px;
+}
+.gf-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+.gf-item:last-child {
+    border-bottom: none;
+}
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Gestion de la progression ---
-def load_progress():
-    try:
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, 'r') as f:
-                content = f.read()
-                if content.strip():
-                    return json.loads(content)
-    except:
-        pass
-    return {
-        "completed": [],
-        "current_day": datetime.now().strftime("%Y-%m-%d"),
-        "last_index": 0,
-        "results": []
-    }
-
-def save_progress(progress):
-    try:
-        with open(CACHE_FILE, 'w') as f:
-            json.dump(progress, f, indent=2)
-    except Exception as e:
-        st.error(f"Erreur sauvegarde: {str(e)}")
+# --- Définition des critères ---
+CRITERIA_DEFINITIONS = {
+    "Volume quotidien": {"objectif": "≥ 100k", "description": "Un volume quotidien élevé indique une bonne liquidité"},
+    "ROE": {"objectif": "≥ 10%", "description": "ROE ≥ 10% indique une bonne rentabilité"},
+    "Debt-to-Equity": {"objectif": "0-0.8", "description": "Ratio dettes/capitaux propres ≤ 0.8 = peu endetté"},
+    "Ownership institutionnel": {"objectif": "> 0%", "description": "Présence d'investisseurs institutionnels = gage de confiance"},
+    "Beta": {"objectif": "0.5-1.5", "description": "Beta entre 0.5 et 1.5 = volatilité modérée"},
+    "Croissance BPA": {"objectif": "> 0%", "description": "Croissance BPA positive = entreprise en expansion"},
+    "FCF/Action": {"objectif": "> 0", "description": "FCF/Action positif = génération de liquidités"},
+    "FCF Yield": {"objectif": "> 5%", "description": "FCF Yield > 5% = bonne génération de cash flow"},
+    "RSI": {"objectif": "40-55", "description": "RSI entre 40 et 55 = ni suracheté ni survendu"}
+}
 
 # --- Fonction RSI ---
 def calculate_rsi(prices, period=14):
@@ -120,19 +122,6 @@ def calculate_rsi(prices, period=14):
         rs = up/down
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
-
-# --- Définition des critères avec objectifs ---
-CRITERIA_DEFINITIONS = {
-    "Volume quotidien": {"objectif": "≥ 100k", "description": "Un volume quotidien élevé indique une bonne liquidité"},
-    "ROE": {"objectif": "≥ 10%", "description": "ROE ≥ 10% indique une bonne rentabilité"},
-    "Debt-to-Equity": {"objectif": "0-0.8", "description": "Ratio dettes/capitaux propres ≤ 0.8 = peu endetté"},
-    "Ownership institutionnel": {"objectif": "> 0%", "description": "Présence d'investisseurs institutionnels = gage de confiance"},
-    "Beta": {"objectif": "0.5-1.5", "description": "Beta entre 0.5 et 1.5 = volatilité modérée"},
-    "Croissance BPA": {"objectif": "> 0%", "description": "Croissance BPA positive = entreprise en expansion"},
-    "FCF/Action": {"objectif": "> 0", "description": "FCF/Action positif = génération de liquidités"},
-    "FCF Yield": {"objectif": "> 5%", "description": "FCF Yield > 5% = bonne génération de cash flow"},
-    "RSI": {"objectif": "40-55", "description": "RSI entre 40 et 55 = ni suracheté ni survendu"}
-}
 
 # --- Analyse d'un ticker ---
 @st.cache_data(ttl=86400)
@@ -213,7 +202,8 @@ def analyze_ticker(ticker):
             "valid_count": valid_count,
             "current_price": current_price,
             "market_cap": info.get('marketCap', 0),
-            "results": results
+            "results": results,
+            "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary"
         }
     except Exception as e:
         return {"ticker": ticker, "error": str(e)}
@@ -238,7 +228,6 @@ def generate_csv(results):
             result["market_cap"]
         ]
 
-        # Ajout des critères
         for criterion, data in result["results"].items():
             row.extend([
                 criterion,
@@ -309,22 +298,41 @@ with tab_analyse:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Bouton d'export
+                # Section GuruFocus COMPLÈTE
+                st.markdown("""
+                <div class="gf-section">
+                    <h3 style="color:#f59e0b;margin-top:0;font-size:17px;">⚠️ Critères GuruFocus à vérifier</h3>
+                    <div class="gf-item">
+                        <span>GF Valuation (Significatively/Modestly undervalued)</span>
+                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    </div>
+                    <div class="gf-item">
+                        <span>GF Score (≥ 70)</span>
+                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    </div>
+                    <div class="gf-item">
+                        <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
+                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                    </div>
+                </div>
+                """.replace("{gf_url}", result['gf_url']), unsafe_allow_html=True)
+
+                # Bouton d'export sous les critères GuruFocus
+                st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
                 csv = generate_csv([result])
                 st.download_button(
-                    label="Exporter en CSV (avec détails complets)",
+                    label="Exporter en CSV",
                     data=csv,
                     file_name=f"analyse_{result['ticker']}.csv",
                     mime="text/csv"
                 )
+                st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_planification:
-    st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color:#4f81bd;font-size:17px;'>Analyse complète des tickers NASDAQ</h2>", unsafe_allow_html=True)
+    # ... (code pour l'analyse complète)
+    pass
 
-    # ... (le reste de votre code pour l'analyse complète)
-
-# --- Pied de page ---
+# --- Pied de page exact ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
 MLG Screener
