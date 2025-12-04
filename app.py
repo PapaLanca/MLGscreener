@@ -21,7 +21,206 @@ st.set_page_config(
 DAILY_LIMIT = 500  # Limite quotidienne Alpha Vantage
 CACHE_FILE = "analysis_progress.json"
 
-# --- CSS avec police augmentée ---
+# --- Gestion de la progression (version robuste) ---
+def load_progress():
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as f:
+                content = f.read()
+                if content.strip():  # Vérifie que le fichier n'est pas vide
+                    return json.loads(content)
+    except (json.JSONDecodeError, FileNotFoundError):
+        pass
+    return {
+        "completed": [],
+        "current_day": datetime.now().strftime("%Y-%m-%d"),
+        "last_index": 0,
+        "results": []
+    }
+
+def save_progress(progress):
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(progress, f, indent=2)
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde: {str(e)}")
+
+def reset_if_new_day(progress):
+    today = datetime.now().strftime("%Y-%m-%d")
+    if progress.get("current_day") != today:
+        progress = {
+            "completed": [],
+            "current_day": today,
+            "last_index": 0,
+            "results": []
+        }
+        save_progress(progress)
+    return progress
+
+# --- Fonction RSI ---
+def calculate_rsi(prices, period=14):
+    if len(prices) < period:
+        return 50
+    deltas = np.diff(prices)
+    seed = deltas[:period+1]
+    up = seed[seed >= 0].sum()/period
+    down = -seed[seed < 0].sum()/period
+    rs = up/down
+    rsi = np.zeros_like(prices)
+    rsi[:period] = 100. - 100./(1.+rs)
+
+    for i in range(period, len(prices)):
+        delta = deltas[i-1]
+        upval = delta if delta > 0 else 0
+        downval = -delta if delta < 0 else 0
+        up = (up*(period-1) + upval)/period
+        down = (down*(period-1) + downval)/period
+        rs = up/down
+        rsi[i] = 100. - 100./(1.+rs)
+    return rsi[-1]
+
+# --- Analyse d'un ticker ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def analyze_ticker(ticker):
+    try:
+        time.sleep(2)  # Délai pour respecter les limites
+
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="3mo", interval="1d")
+
+        # Calcul des métriques avec valeurs par défaut
+        current_price = info.get('currentPrice', 0)
+        avg_volume = info.get('averageVolume', 0)
+        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
+        debt_to_equity = info.get('debtToEquity', 0)
+        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
+        beta = info.get('beta', 1)
+        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
+        fcf = info.get('freeCashflow', 0)
+        shares_outstanding = info.get('sharesOutstanding', 1)
+        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
+
+        # Calcul RSI
+        rsi = 50
+        if not hist.empty and 'Close' in hist:
+            rsi = calculate_rsi(hist['Close'].values)
+
+        # Calcul FCF Yield
+        fcf_yield = 0
+        if current_price > 0 and fcf_per_share > 0:
+            fcf_yield = (fcf_per_share / current_price) * 100
+
+        results = {
+            "Volume quotidien": {"valid": avg_volume >= 100000, "value": f"{avg_volume:,.0f}"},
+            "ROE": {"valid": roe >= 10, "value": f"{roe:.1f}%"},
+            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "value": f"{debt_to_equity:.2f}"},
+            "Ownership institutionnel": {"valid": inst_ownership > 0, "value": f"{inst_ownership:.1f}%"},
+            "Beta": {"valid": 0.5 < beta < 1.5, "value": f"{beta:.2f}"},
+            "Croissance BPA": {"valid": eps_growth > 0, "value": f"{eps_growth:.1f}%"},
+            "FCF/Action": {"valid": fcf_per_share > 0, "value": f"{fcf_per_share:.2f}"},
+            "FCF Yield": {"valid": fcf_yield > 5, "value": f"{fcf_yield:.1f}%"},
+            "RSI": {"valid": 40 < rsi < 55, "value": f"{rsi:.1f}"}
+        }
+
+        valid_count = sum(1 for data in results.values() if data["valid"])
+
+        return {
+            "ticker": ticker,
+            "name": info.get('longName', ticker),
+            "score": f"{valid_count}/9",
+            "valid_count": valid_count,
+            "current_price": current_price,
+            "market_cap": info.get('marketCap', 0),
+            "results": results
+        }
+    except Exception as e:
+        return {"ticker": ticker, "error": str(e)}
+
+# --- Analyse complète avec limite quotidienne ---
+def run_bulk_analysis(tickers):
+    progress = reset_if_new_day(load_progress())
+    completed = progress["completed"]
+    results = progress.get("results", [])
+    start_idx = progress["last_index"]
+
+    # Vérification de la limite quotidienne
+    today = datetime.now().strftime("%Y-%m-%d")
+    if progress.get("current_day") != today:
+        progress = {
+            "completed": [],
+            "current_day": today,
+            "last_index": 0,
+            "results": []
+        }
+        completed = []
+        start_idx = 0
+        save_progress(progress)
+
+    if len(completed) >= DAILY_LIMIT:
+        st.warning(f"Limite quotidienne de {DAILY_LIMIT} requêtes atteinte. Reprenez demain.")
+        return results
+
+    remaining = DAILY_LIMIT - len(completed)
+    end_idx = min(start_idx + remaining, len(tickers))
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i in range(start_idx, end_idx):
+        ticker = tickers[i]
+        status_text.text(f"Analyse de {ticker} ({i+1}/{len(tickers)})... {len(completed)+1}/{DAILY_LIMIT} aujourd'hui")
+        result = analyze_ticker(ticker)
+        results.append(result)
+        completed.append(ticker)
+        progress["last_index"] = i + 1
+        progress["completed"] = completed
+        progress["results"] = results
+        progress["current_day"] = today
+        save_progress(progress)
+        progress_bar.progress((i+1)/len(tickers))
+
+    status_text.text(f"Analyse terminée pour aujourd'hui! {len(completed)} tickers analysés.")
+    return results
+
+# --- Génération CSV ---
+def generate_csv(results):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Ticker", "Nom", "Score", "Prix", "Capitalisation"] +
+                  [f"Critère: {c}" for c in results[0]["results"].keys()])
+
+    for result in results:
+        if "error" in result:
+            writer.writerow([result["ticker"], "Erreur", "", "", ""] + [""]*len(results[0]["results"]))
+            continue
+
+        row = [
+            result["ticker"],
+            result["name"],
+            result["score"],
+            result["current_price"],
+            result["market_cap"]
+        ]
+
+        for criterion in results[0]["results"].keys():
+            row.append(f"{result['results'][criterion]['value']} ({'✅' if result['results'][criterion]['valid'] else '❌'})")
+
+        writer.writerow(row)
+
+    return output.getvalue().encode('utf-8')
+
+# --- Chargement des tickers NASDAQ ---
+@st.cache_data
+def load_nasdaq_tickers():
+    try:
+        url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
+        df = pd.read_csv(url, sep='|')
+        return df['Symbol'].tolist()
+    except:
+        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN", "GOOGL", "META", "NVDA"]
+
+# --- CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
@@ -62,202 +261,8 @@ body {
     width: 0%;
     transition: width 0.3s;
 }
-.footer {
-    margin-top: 50px;
-    padding: 20px;
-    text-align: center;
-    color: var(--text);
-    font-size: 15px !important;
-    line-height: 1.6;
-    border-top: 1px solid var(--border);
-}
 </style>
 """, unsafe_allow_html=True)
-
-# --- Gestion de la progression ---
-def load_progress():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, 'r') as f:
-            return json.load(f)
-    return {
-        "completed": [],
-        "current_day": datetime.now().strftime("%Y-%m-%d"),
-        "last_index": 0,
-        "results": []
-    }
-
-def save_progress(progress):
-    with open(CACHE_FILE, 'w') as f:
-        json.dump(progress, f)
-
-def reset_if_new_day(progress):
-    today = datetime.now().strftime("%Y-%m-%d")
-    if progress["current_day"] != today:
-        progress["completed"] = []
-        progress["last_index"] = 0
-        progress["current_day"] = today
-        save_progress(progress)
-    return progress
-
-# --- Fonction RSI ---
-def calculate_rsi(prices, period=14):
-    if len(prices) < period:
-        return 50
-    deltas = np.diff(prices)
-    seed = deltas[:period+1]
-    up = seed[seed >= 0].sum()/period
-    down = -seed[seed < 0].sum()/period
-    rs = up/down
-    rsi = np.zeros_like(prices)
-    rsi[:period] = 100. - 100./(1.+rs)
-
-    for i in range(period, len(prices)):
-        delta = deltas[i-1]
-        upval = delta if delta > 0 else 0
-        downval = -delta if delta < 0 else 0
-        up = (up*(period-1) + upval)/period
-        down = (down*(period-1) + downval)/period
-        rs = up/down
-        rsi[i] = 100. - 100./(1.+rs)
-    return rsi[-1]
-
-# --- Analyse d'un ticker ---
-@st.cache_data(ttl=86400, show_spinner=False)
-def analyze_ticker(ticker):
-    try:
-        time.sleep(2)  # Délai pour respecter les limites
-
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="3mo", interval="1d")
-
-        # Calcul des métriques
-        current_price = info.get('currentPrice', 0)
-        avg_volume = info.get('averageVolume', 0)
-        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-        debt_to_equity = info.get('debtToEquity', 0)
-        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
-        beta = info.get('beta', 1)
-        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
-        fcf = info.get('freeCashflow', 0)
-        shares_outstanding = info.get('sharesOutstanding', 1)
-        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
-
-        # Calcul RSI
-        rsi = 50
-        if not hist.empty and 'Close' in hist:
-            rsi = calculate_rsi(hist['Close'].values)
-
-        # Calcul FCF Yield
-        fcf_yield = 0
-        if current_price > 0 and fcf_per_share > 0:
-            fcf_yield = (fcf_per_share / current_price) * 100
-
-        # Évaluation des critères
-        results = {
-            "Volume quotidien": {"valid": avg_volume >= 100000, "value": f"{avg_volume:,.0f}",
-                               "description": "Un volume quotidien élevé indique une bonne liquidité, essentielle pour entrer/sortir facilement d'une position."},
-            "ROE": {"valid": roe >= 10, "value": f"{roe:.1f}%",
-                   "description": "Le ROE (Return on Equity) mesure la rentabilité des capitaux propres. Un ROE ≥ 10% indique une bonne performance."},
-            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "value": f"{debt_to_equity:.2f}",
-                             "description": "Un ratio dettes/capitaux propres ≤ 0.8 montre une entreprise peu endettée, donc moins risquée."},
-            "Ownership institutionnel": {"valid": inst_ownership > 0, "value": f"{inst_ownership:.1f}%",
-                                         "description": "La présence d'investisseurs institutionnels est un gage de confiance dans l'entreprise."},
-            "Beta": {"valid": 0.5 < beta < 1.5, "value": f"{beta:.2f}",
-                    "description": "Un beta entre 0.5 et 1.5 indique une volatilité modérée par rapport au marché."},
-            "Croissance BPA": {"valid": eps_growth > 0, "value": f"{eps_growth:.1f}%",
-                               "description": "Une croissance du BPA (Bénéfice Par Action) positive montre une entreprise en expansion."},
-            "FCF/Action": {"valid": fcf_per_share > 0, "value": f"{fcf_per_share:.2f}",
-                          "description": "Un Free Cash Flow par action positif indique que l'entreprise génère des liquidités."},
-            "FCF Yield": {"valid": fcf_yield > 5, "value": f"{fcf_yield:.1f}%",
-                         "description": "Un FCF Yield > 5% montre une bonne génération de cash flow par rapport à la capitalisation."},
-            "RSI": {"valid": 40 < rsi < 55, "value": f"{rsi:.1f}",
-                    "description": "Un RSI entre 40 et 55 indique que le titre n'est ni suracheté ni survendu."}
-        }
-
-        valid_count = sum(1 for data in results.values() if data["valid"])
-
-        return {
-            "ticker": ticker,
-            "name": info.get('longName', ticker),
-            "score": f"{valid_count}/9",
-            "valid_count": valid_count,
-            "current_price": current_price,
-            "market_cap": info.get('marketCap', 0),
-            "results": results
-        }
-    except Exception as e:
-        return {"ticker": ticker, "error": str(e)}
-
-# --- Analyse complète avec limite quotidienne ---
-def run_bulk_analysis(tickers):
-    progress = reset_if_new_day(load_progress())
-    completed = progress["completed"]
-    results = progress.get("results", [])
-    start_idx = progress["last_index"]
-
-    # Vérification de la limite quotidienne
-    if len(completed) >= DAILY_LIMIT:
-        st.warning(f"Limite quotidienne de {DAILY_LIMIT} requêtes atteinte. Reprenez demain.")
-        return results
-
-    # Calcul du nombre de tickers restants pour aujourd'hui
-    remaining = DAILY_LIMIT - len(completed)
-    end_idx = min(start_idx + remaining, len(tickers))
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    for i in range(start_idx, end_idx):
-        ticker = tickers[i]
-        status_text.text(f"Analyse de {ticker} ({i+1}/{len(tickers)})... {len(completed)+1}/{DAILY_LIMIT} aujourd'hui")
-        result = analyze_ticker(ticker)
-        results.append(result)
-        completed.append(ticker)
-        progress["last_index"] = i + 1
-        progress["completed"] = completed
-        progress["results"] = results
-        save_progress(progress)
-        progress_bar.progress((i+1)/len(tickers))
-
-    status_text.text(f"Analyse terminée pour aujourd'hui! {len(completed)} tickers analysés.")
-    return results
-
-# --- Génération CSV ---
-def generate_csv(results):
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Ticker", "Nom", "Score", "Prix", "Capitalisation"] +
-                  [f"Critère: {c}" for c in results[0]["results"].keys()] +
-                  ["Description"])
-
-    for result in results:
-        if "error" in result:
-            writer.writerow([result["ticker"], "Erreur", "", "", ""] + [""]*(len(results[0]["results"])+1))
-            continue
-
-        for criterion, data in result["results"].items():
-            writer.writerow([
-                result["ticker"],
-                result["name"],
-                result["score"],
-                result["current_price"],
-                result["market_cap"],
-                f"{criterion}: {data['value']} ({'✅' if data['valid'] else '❌'})",
-                data["description"]
-            ])
-
-    return output.getvalue().encode('utf-8')
-
-# --- Chargement des tickers NASDAQ ---
-@st.cache_data
-def load_nasdaq_tickers():
-    try:
-        url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
-        df = pd.read_csv(url, sep='|')
-        return df['Symbol'].tolist()
-    except:
-        return ["AAPL", "MSFT", "GMED", "TSLA", "AMZN", "GOOGL", "META", "NVDA"]
 
 # --- Interface ---
 st.markdown("""
@@ -305,10 +310,10 @@ with tab_analyse:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Bouton d'export CSV avec explications
+                # Bouton d'export CSV
                 csv = generate_csv([result])
                 st.download_button(
-                    label="Exporter en CSV (avec explications)",
+                    label="Exporter en CSV",
                     data=csv,
                     file_name=f"analyse_{result['ticker']}.csv",
                     mime="text/csv",
@@ -320,7 +325,7 @@ with tab_planification:
     st.markdown("<h2 style='color:#4f81bd;font-size:17px;'>Analyse complète des tickers NASDAQ</h2>", unsafe_allow_html=True)
 
     tickers = load_nasdaq_tickers()
-    progress = reset_if_new_day(load_progress())
+    progress = load_progress()
 
     st.write(f"Progression: {len(progress['completed'])}/{len(tickers)} tickers analysés")
     st.write(f"Limite quotidienne: {DAILY_LIMIT} requêtes (Alpha Vantage)")
@@ -344,20 +349,21 @@ with tab_planification:
             for result in good_results:
                 st.write(f"{result['ticker']} - {result['name']} ({result['score']})")
 
-# --- Pied de page complet avec disclaimer ---
+# --- Pied de page EXACTEMENT comme vous me l'avez donné ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
-    <div style="font-weight:600;margin-bottom:15px;">MLG Screener</div>
+MLG Screener
 
-        Proposé gratuitement par EURL MLG Courtage
-        Courtier en assurances agréé ORIAS n°24002055
-        SIRET : 98324762800016
-        
-        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
-        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
-        
-        © 2025 EURL MLG Courtage - Tous droits réservés
+Proposé gratuitement par EURL MLG Courtage
+Courtier en assurances agréé ORIAS n°24002055
+SIRET : 98324762800016
+www.mlgcourtage.fr
 
+MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.
+Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.
+
+© 2025 EURL MLG Courtage - Tous droits réservés
 </div>
 """, unsafe_allow_html=True)
-
