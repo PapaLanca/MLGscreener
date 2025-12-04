@@ -349,35 +349,15 @@ st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
     <div style="font-weight:600;margin-bottom:15px;">MLG Screener</div>
 
-    <div style="margin-bottom:15px;">
-        Proposé gratuitement par <strong>EURL MLG Courtage</strong><br>
-        Courtier en assurances agréé ORIAS n°24002055<br>
-        SIRET : 98324762800016<br>
-        <a href="https://www.mlgcourtage.fr" style="color:var(--primary);text-decoration:none;" target="_blank">www.mlgcourtage.fr</a>
-    </div>
-
-    <div style="text-align:left;max-width:800px;margin:0 auto 20px;color:#9ca3af;">
-        <strong>Disclaimer :</strong><br><br>
-        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.<br>
-        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.<br>
-        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.<br>
-        Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.<br><br>
-
-        <strong>Explications des indicateurs :</strong><br>
-        - <strong>Volume quotidien</strong> : Un volume élevé indique une bonne liquidité.<br>
-        - <strong>ROE</strong> : Mesure la rentabilité des capitaux propres (≥10% = bonne performance).<br>
-        - <strong>Debt-to-Equity</strong> : Ratio dettes/capitaux propres (≤0.8 = peu endetté).<br>
-        - <strong>Ownership institutionnel</strong> : Présence d'investisseurs institutionnels = gage de confiance.<br>
-        - <strong>Beta</strong> : Mesure la volatilité par rapport au marché (0.5-1.5 = volatilité modérée).<br>
-        - <strong>Croissance BPA</strong> : Croissance du bénéfice par action (>0% = entreprise en expansion).<br>
-        - <strong>FCF/Action</strong> : Free Cash Flow par action (>0 = génération de liquidités).<br>
-        - <strong>FCF Yield</strong> : Free Cash Flow Yield (>5% = bonne génération de cash flow).<br>
-        - <strong>RSI</strong> : Indice de force relative (40-55 = ni suracheté ni survendu).
-    </div>
-
-    <div style="font-size:12px;color:#6b7280;">
+        Proposé gratuitement par EURL MLG Courtage
+        Courtier en assurances agréé ORIAS n°24002055
+        SIRET : 98324762800016
+        
+        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.
+        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.
+        
         © 2025 EURL MLG Courtage - Tous droits réservés
-    </div>
+
 </div>
 """, unsafe_allow_html=True)
 
