@@ -21,7 +21,7 @@ st.set_page_config(
 DAILY_LIMIT = 500  # Limite quotidienne Alpha Vantage
 CACHE_FILE = "analysis_progress.json"
 
-# --- CSS ---
+# --- CSS avec police augmentée ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
@@ -61,6 +61,15 @@ body {
     border-radius: 10px;
     width: 0%;
     transition: width 0.3s;
+}
+.footer {
+    margin-top: 50px;
+    padding: 20px;
+    text-align: center;
+    color: var(--text);
+    font-size: 15px !important;
+    line-height: 1.6;
+    border-top: 1px solid var(--border);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -146,18 +155,27 @@ def analyze_ticker(ticker):
 
         # Évaluation des critères
         results = {
-            "Volume quotidien": avg_volume >= 100000,
-            "ROE": roe >= 10,
-            "Debt-to-Equity": 0 <= debt_to_equity <= 0.8,
-            "Ownership institutionnel": inst_ownership > 0,
-            "Beta": 0.5 < beta < 1.5,
-            "Croissance BPA": eps_growth > 0,
-            "FCF/Action": fcf_per_share > 0,
-            "FCF Yield": fcf_yield > 5,
-            "RSI": 40 < rsi < 55
+            "Volume quotidien": {"valid": avg_volume >= 100000, "value": f"{avg_volume:,.0f}",
+                               "description": "Un volume quotidien élevé indique une bonne liquidité, essentielle pour entrer/sortir facilement d'une position."},
+            "ROE": {"valid": roe >= 10, "value": f"{roe:.1f}%",
+                   "description": "Le ROE (Return on Equity) mesure la rentabilité des capitaux propres. Un ROE ≥ 10% indique une bonne performance."},
+            "Debt-to-Equity": {"valid": 0 <= debt_to_equity <= 0.8, "value": f"{debt_to_equity:.2f}",
+                             "description": "Un ratio dettes/capitaux propres ≤ 0.8 montre une entreprise peu endettée, donc moins risquée."},
+            "Ownership institutionnel": {"valid": inst_ownership > 0, "value": f"{inst_ownership:.1f}%",
+                                         "description": "La présence d'investisseurs institutionnels est un gage de confiance dans l'entreprise."},
+            "Beta": {"valid": 0.5 < beta < 1.5, "value": f"{beta:.2f}",
+                    "description": "Un beta entre 0.5 et 1.5 indique une volatilité modérée par rapport au marché."},
+            "Croissance BPA": {"valid": eps_growth > 0, "value": f"{eps_growth:.1f}%",
+                               "description": "Une croissance du BPA (Bénéfice Par Action) positive montre une entreprise en expansion."},
+            "FCF/Action": {"valid": fcf_per_share > 0, "value": f"{fcf_per_share:.2f}",
+                          "description": "Un Free Cash Flow par action positif indique que l'entreprise génère des liquidités."},
+            "FCF Yield": {"valid": fcf_yield > 5, "value": f"{fcf_yield:.1f}%",
+                         "description": "Un FCF Yield > 5% montre une bonne génération de cash flow par rapport à la capitalisation."},
+            "RSI": {"valid": 40 < rsi < 55, "value": f"{rsi:.1f}",
+                    "description": "Un RSI entre 40 et 55 indique que le titre n'est ni suracheté ni survendu."}
         }
 
-        valid_count = sum(1 for v in results.values() if v)
+        valid_count = sum(1 for data in results.values() if data["valid"])
 
         return {
             "ticker": ticker,
@@ -210,25 +228,24 @@ def generate_csv(results):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Ticker", "Nom", "Score", "Prix", "Capitalisation"] +
-                  [f"Critère: {c}" for c in results[0]["results"].keys()])
+                  [f"Critère: {c}" for c in results[0]["results"].keys()] +
+                  ["Description"])
 
     for result in results:
         if "error" in result:
-            writer.writerow([result["ticker"], "Erreur", "", "", ""] + [""]*len(results[0]["results"]))
+            writer.writerow([result["ticker"], "Erreur", "", "", ""] + [""]*(len(results[0]["results"])+1))
             continue
 
-        row = [
-            result["ticker"],
-            result["name"],
-            result["score"],
-            result["current_price"],
-            result["market_cap"]
-        ]
-
-        for criterion in results[0]["results"].keys():
-            row.append("✅" if result["results"][criterion] else "❌")
-
-        writer.writerow(row)
+        for criterion, data in result["results"].items():
+            writer.writerow([
+                result["ticker"],
+                result["name"],
+                result["score"],
+                result["current_price"],
+                result["market_cap"],
+                f"{criterion}: {data['value']} ({'✅' if data['valid'] else '❌'})",
+                data["description"]
+            ])
 
     return output.getvalue().encode('utf-8')
 
@@ -275,15 +292,28 @@ with tab_analyse:
                 st.markdown(f"### {result['ticker']} - {result['name']}")
                 st.markdown(f"**Prix actuel:** {result['current_price']} | **Capitalisation:** {result['market_cap']:,.0f}")
 
-                for criterion, valid in result["results"].items():
-                    status = "✅ Valide" if valid else "❌ Invalide"
-                    color = "#10b981" if valid else "#ef4444"
+                for criterion, data in result["results"].items():
+                    status = "✅ Valide" if data["valid"] else "❌ Invalide"
+                    color = "#10b981" if data["valid"] else "#ef4444"
                     st.markdown(f"""
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#334155;border-radius:6px;border:1px solid #475569;margin-bottom:8px;border-left:4px solid {color};">
                         <span style="font-size:15px;">{criterion}</span>
-                        <span style="font-weight:600;color:{color};font-size:15px;">{status}</span>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+                            <span style="font-weight:600;color:{color};font-size:15px;">{status}</span>
+                            <span style="font-size:13px;color:#9ca3af;margin-top:2px;">{data['value']}</span>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
+
+                # Bouton d'export CSV avec explications
+                csv = generate_csv([result])
+                st.download_button(
+                    label="Exporter en CSV (avec explications)",
+                    data=csv,
+                    file_name=f"analyse_{result['ticker']}.csv",
+                    mime="text/csv",
+                    key="export_csv"
+                )
 
 with tab_planification:
     st.markdown("<div style='background:#334155;padding:20px;border-radius:8px;margin-top:30px;'>", unsafe_allow_html=True)
@@ -314,16 +344,40 @@ with tab_planification:
             for result in good_results:
                 st.write(f"{result['ticker']} - {result['name']} ({result['score']})")
 
-# --- Pied de page ---
+# --- Pied de page complet avec disclaimer ---
 st.markdown("""
 <div style="margin-top:50px;padding:20px;text-align:center;color:var(--text);font-size:15px;line-height:1.6;border-top:1px solid var(--border);">
-MLG Screener
+    <div style="font-weight:600;margin-bottom:15px;">MLG Screener</div>
 
-Proposé gratuitement par EURL MLG Courtage
-Courtier en assurances agréé ORIAS n°24002055
-SIRET : 98324762800016
-www.mlgcourtage.fr
+    <div style="margin-bottom:15px;">
+        Proposé gratuitement par <strong>EURL MLG Courtage</strong><br>
+        Courtier en assurances agréé ORIAS n°24002055<br>
+        SIRET : 98324762800016<br>
+        <a href="https://www.mlgcourtage.fr" style="color:var(--primary);text-decoration:none;" target="_blank">www.mlgcourtage.fr</a>
+    </div>
 
-© 2025 EURL MLG Courtage - Tous droits réservés
+    <div style="text-align:left;max-width:800px;margin:0 auto 20px;color:#9ca3af;">
+        <strong>Disclaimer :</strong><br><br>
+        MLG Screener est un outil d'analyse financière conçu pour aider les investisseurs à identifier des opportunités selon une méthodologie rigoureuse.<br>
+        Les informations présentées sont basées sur des données publiques et ne constituent en aucun cas un conseil en investissement.<br>
+        Tout investissement comporte des risques, y compris la perte en capital. Les performances passées ne préjugent pas des performances futures.<br>
+        Nous vous recommandons vivement de consulter un conseiller financier indépendant avant toute décision d'investissement.<br><br>
+
+        <strong>Explications des indicateurs :</strong><br>
+        - <strong>Volume quotidien</strong> : Un volume élevé indique une bonne liquidité.<br>
+        - <strong>ROE</strong> : Mesure la rentabilité des capitaux propres (≥10% = bonne performance).<br>
+        - <strong>Debt-to-Equity</strong> : Ratio dettes/capitaux propres (≤0.8 = peu endetté).<br>
+        - <strong>Ownership institutionnel</strong> : Présence d'investisseurs institutionnels = gage de confiance.<br>
+        - <strong>Beta</strong> : Mesure la volatilité par rapport au marché (0.5-1.5 = volatilité modérée).<br>
+        - <strong>Croissance BPA</strong> : Croissance du bénéfice par action (>0% = entreprise en expansion).<br>
+        - <strong>FCF/Action</strong> : Free Cash Flow par action (>0 = génération de liquidités).<br>
+        - <strong>FCF Yield</strong> : Free Cash Flow Yield (>5% = bonne génération de cash flow).<br>
+        - <strong>RSI</strong> : Indice de force relative (40-55 = ni suracheté ni survendu).
+    </div>
+
+    <div style="font-size:12px;color:#6b7280;">
+        © 2025 EURL MLG Courtage - Tous droits réservés
+    </div>
 </div>
 """, unsafe_allow_html=True)
+
