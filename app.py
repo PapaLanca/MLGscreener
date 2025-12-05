@@ -21,7 +21,7 @@ st.set_page_config(
 DAILY_LIMIT = 500
 CACHE_FILE = "analysis_progress.json"
 
-# --- CSS avec styles améliorés ---
+# --- CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;600;700&display=swap');
@@ -33,6 +33,7 @@ st.markdown("""
     --dark-card: #334155;
     --text: #e2e8f0;
     --border: #475569;
+    --missing: #f59e0b;
 }
 body {
     font-family: 'Montserrat', sans-serif;
@@ -52,6 +53,9 @@ body {
 }
 .criterion-card.invalid {
     border-left-color: var(--invalid);
+}
+.criterion-card.missing {
+    border-left-color: var(--missing);
 }
 .criterion-header {
     display: flex;
@@ -85,6 +89,10 @@ body {
     gap: 10px;
     justify-content: flex-end;
     margin-top: 20px;
+}
+.missing-data {
+    color: var(--missing);
+    font-style: italic;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -123,7 +131,7 @@ def calculate_rsi(prices, period=14):
         rsi[i] = 100. - 100./(1.+rs)
     return rsi[-1]
 
-# --- Analyse d'un ticker ---
+# --- Analyse d'un ticker avec gestion des données manquantes ---
 @st.cache_data(ttl=86400)
 def analyze_ticker(ticker):
     try:
@@ -133,75 +141,107 @@ def analyze_ticker(ticker):
         info = stock.info
         hist = stock.history(period="3mo", interval="1d")
 
-        # Calcul des métriques
-        current_price = info.get('currentPrice', 0)
-        avg_volume = info.get('averageVolume', 0)
-        roe = info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0
-        debt_to_equity = info.get('debtToEquity', 0)
-        inst_ownership = info.get('institutionalOwnership', 0) * 100 if info.get('institutionalOwnership') else 0
-        beta = info.get('beta', 1)
-        eps_growth = info.get('earningsQuarterlyGrowth', 0) * 100 if info.get('earningsQuarterlyGrowth') else 0
-        fcf = info.get('freeCashflow', 0)
-        shares_outstanding = info.get('sharesOutstanding', 1)
-        fcf_per_share = fcf / shares_outstanding if shares_outstanding else 0
+        # Récupération des données avec gestion des valeurs manquantes
+        current_price = info.get('currentPrice', None)
+        avg_volume = info.get('averageVolume', None)
+        roe = info.get('returnOnEquity', None)
+        if roe is not None:
+            roe = roe * 100
+        debt_to_equity = info.get('debtToEquity', None)
+        inst_ownership = info.get('institutionalOwnership', None)
+        if inst_ownership is not None:
+            inst_ownership = inst_ownership * 100
+        beta = info.get('beta', None)
+        eps_growth = info.get('earningsQuarterlyGrowth', None)
+        if eps_growth is not None:
+            eps_growth = eps_growth * 100
+        fcf = info.get('freeCashflow', None)
+        shares_outstanding = info.get('sharesOutstanding', None)
+        market_cap = info.get('marketCap', None)
 
-        # Calcul RSI
+        # Calcul RSI (avec vérification des données)
         rsi = 50
         if not hist.empty and 'Close' in hist:
             rsi = calculate_rsi(hist['Close'].values)
 
-        # Calcul FCF Yield
+        # Calcul FCF/Action et FCF Yield (avec vérification)
+        fcf_per_share = None
         fcf_yield = 0
-        if current_price > 0 and fcf_per_share > 0:
-            fcf_yield = (fcf_per_share / current_price) * 100
+        if fcf is not None and shares_outstanding is not None and shares_outstanding > 0:
+            fcf_per_share = fcf / shares_outstanding
+            if current_price is not None and current_price > 0 and fcf_per_share > 0:
+                fcf_yield = (fcf_per_share / current_price) * 100
 
-        # Évaluation des critères
+        # Évaluation des critères avec gestion des données manquantes
         results = {}
         for criterion, definition in CRITERIA_DEFINITIONS.items():
+            valid = None
+            value = "Donnée manquante"
+            card_class = "missing"
+
             if criterion == "Volume quotidien":
-                valid = avg_volume >= 100000
-                value = f"{avg_volume:,.0f}"
+                if avg_volume is not None:
+                    valid = avg_volume >= 100000
+                    value = f"{avg_volume:,.0f}"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "ROE":
-                valid = roe >= 10
-                value = f"{roe:.1f}%"
+                if roe is not None:
+                    valid = roe >= 10
+                    value = f"{roe:.1f}%"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "Debt-to-Equity":
-                valid = 0 <= debt_to_equity <= 0.8
-                value = f"{debt_to_equity:.2f}"
+                if debt_to_equity is not None:
+                    valid = 0 <= debt_to_equity <= 0.8
+                    value = f"{debt_to_equity:.2f}"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "Ownership institutionnel":
-                valid = inst_ownership > 0
-                value = f"{inst_ownership:.1f}%"
+                if inst_ownership is not None:
+                    valid = inst_ownership > 0
+                    value = f"{inst_ownership:.1f}%"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "Beta":
-                valid = 0.5 < beta < 1.5
-                value = f"{beta:.2f}"
+                if beta is not None:
+                    valid = 0.5 < beta < 1.5
+                    value = f"{beta:.2f}"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "Croissance BPA":
-                valid = eps_growth > 0
-                value = f"{eps_growth:.1f}%"
+                if eps_growth is not None:
+                    valid = eps_growth > 0
+                    value = f"{eps_growth:.1f}%"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "FCF/Action":
-                valid = fcf_per_share > 0
-                value = f"{fcf_per_share:.2f}"
+                if fcf_per_share is not None:
+                    valid = fcf_per_share > 0
+                    value = f"{fcf_per_share:.2f}"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "FCF Yield":
-                valid = fcf_yield > 5
-                value = f"{fcf_yield:.1f}%"
+                if fcf_yield > 0:
+                    valid = fcf_yield > 5
+                    value = f"{fcf_yield:.1f}%"
+                    card_class = "valid" if valid else "invalid"
             elif criterion == "RSI":
                 valid = 40 < rsi < 55
                 value = f"{rsi:.1f}"
+                card_class = "valid" if valid else "invalid"
 
             results[criterion] = {
                 "valid": valid,
                 "value": value,
                 "objectif": definition["objectif"],
-                "description": definition["description"]
+                "description": definition["description"],
+                "card_class": card_class
             }
 
-        valid_count = sum(1 for data in results.values() if data["valid"])
+        # Calcul du score (seulement pour les critères avec données disponibles)
+        valid_count = sum(1 for data in results.values() if data["valid"] is not None and data["valid"])
 
         return {
             "ticker": ticker,
             "name": info.get('longName', ticker),
             "score": f"{valid_count}/9",
             "valid_count": valid_count,
-            "current_price": current_price,
-            "market_cap": info.get('marketCap', 0),
+            "current_price": current_price if current_price is not None else "N/A",
+            "market_cap": market_cap if market_cap is not None else "N/A",
             "results": results,
             "gf_url": f"https://www.gurufocus.com/stock/{ticker}/summary"
         }
@@ -229,11 +269,12 @@ def generate_csv(results):
         ]
 
         for criterion, data in result["results"].items():
+            status = "✅ Valide" if data["valid"] else "❌ Invalide" if data["valid"] is not None else "Donnée manquante"
             row.extend([
                 criterion,
                 data["objectif"],
                 data["value"],
-                "✅ Valide" if data["valid"] else "❌ Invalide",
+                status,
                 data["description"]
             ])
 
@@ -273,13 +314,13 @@ with tab_analyse:
                 """, unsafe_allow_html=True)
 
                 st.markdown(f"### {result['ticker']} - {result['name']}")
-                st.markdown(f"**Prix actuel:** {result['current_price']} | **Capitalisation:** {result['market_cap']:,.0f}")
+                st.markdown(f"**Prix actuel:** {result['current_price']} | **Capitalisation:** {result['market_cap']}")
 
                 # Affichage détaillé des critères
                 for criterion, data in result["results"].items():
-                    status = "✅ Valide" if data["valid"] else "❌ Invalide"
-                    color = "#10b981" if data["valid"] else "#ef4444"
-                    card_class = "valid" if data["valid"] else "invalid"
+                    status = "✅ Valide" if data["valid"] else "❌ Invalide" if data["valid"] is not None else "<span class='missing-data'>Donnée manquante</span>"
+                    color = "#10b981" if data["valid"] else "#ef4444" if data["valid"] is not None else "#f59e0b"
+                    card_class = data["card_class"]
 
                     st.markdown(f"""
                     <div class="criterion-card {card_class}">
@@ -299,23 +340,23 @@ with tab_analyse:
                     """, unsafe_allow_html=True)
 
                 # Section GuruFocus COMPLÈTE
-                st.markdown("""
+                st.markdown(f"""
                 <div class="gf-section">
                     <h3 style="color:#f59e0b;margin-top:0;font-size:17px;">⚠️ Critères GuruFocus à vérifier</h3>
                     <div class="gf-item">
                         <span>GF Valuation (Significatively/Modestly undervalued)</span>
-                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                        <a href="{result['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
                     </div>
                     <div class="gf-item">
                         <span>GF Score (≥ 70)</span>
-                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                        <a href="{result['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
                     </div>
                     <div class="gf-item">
                         <span>Progression GF Value (FY1 < FY2 ≤ FY3)</span>
-                        <a href="{gf_url}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
+                        <a href="{result['gf_url']}" style="color:#4f81bd;text-decoration:none;" target="_blank">Vérifier →</a>
                     </div>
                 </div>
-                """.replace("{gf_url}", result['gf_url']), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
                 # Bouton d'export sous les critères GuruFocus
                 st.markdown('<div class="export-buttons">', unsafe_allow_html=True)
@@ -329,7 +370,7 @@ with tab_analyse:
                 st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_planification:
-    # ... (code pour l'analyse complète)
+    # Code pour l'analyse complète (à compléter si nécessaire)
     pass
 
 # --- Pied de page exact ---
